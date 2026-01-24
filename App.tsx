@@ -35,18 +35,17 @@ const App: React.FC = () => {
   const initialLoadComplete = useRef(false); // <--- NEW: Track first successful load
 
   useEffect(() => {
-    // 1. WATCHDOG (Anti-Loop): Se o loading demorar mais de 8s, reseta tudo.
+    // 1. WATCHDOG (Anti-Loop): Limpa o loading se travar por muito tempo.
+    // SÊNIOR: Removemos o reload() forçado pois ele causa loops infinitos em abas de background.
     const watchdog = setTimeout(() => {
       setIsLoading((currentLoading) => {
         if (currentLoading) {
-          console.warn("⚠️ Watchdog: Loading timeout (8s). Forcing reset.");
-          // Opcional: localStorage.clear(); para ser nuclear
-          window.location.reload();
-          return false;
+          console.warn("⚠️ Watchdog: Loading timeout (15s). Destravando UI.");
+          return false; // Apenas solta o loading, não reseta a página
         }
         return currentLoading;
       });
-    }, 8000);
+    }, 15000);
 
     // 2. Init Session
     const initSession = async () => {
