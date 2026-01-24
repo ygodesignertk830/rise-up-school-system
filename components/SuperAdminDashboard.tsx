@@ -4,11 +4,12 @@ import { supabase } from '../lib/supabaseClient';
 import {
   Building2, DollarSign, Calendar, Lock, Unlock,
   Plus, Search, LogOut, TrendingUp, AlertOctagon,
-  MoreVertical, Edit, Mail, Key, Shield
+  MoreVertical, Edit, Mail, Key, Shield, X, Save
 } from 'lucide-react';
 import { showToast, showAlert, showConfirm } from '../utils/alerts';
 import { formatCurrency, getLocalDateString, formatDate, getFutureDateString } from '../utils/finance';
 import { motion, AnimatePresence } from 'framer-motion';
+import { UserPlus, UserX, Users as UsersIcon } from 'lucide-react';
 
 interface SuperAdminDashboardProps {
   onLogout: () => void;
@@ -20,6 +21,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('create');
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
+  const [activeTab, setActiveTab] = useState<'schools' | 'users'>('schools');
+  const [authorizedUsers, setAuthorizedUsers] = useState<any[]>([]);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [userModalMode, setUserModalMode] = useState<'create' | 'edit' | 'view'>('create');
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState(''); // NEW
+  const [newUserSchoolId, setNewUserSchoolId] = useState('');
+  const [isProvisioning, setIsProvisioning] = useState(false); // NEW
 
   // Estado do formulário
   const [formData, setFormData] = useState<Partial<School>>({
@@ -34,9 +44,42 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
 
   const [tempPassword, setTempPassword] = useState('');
 
+  // Password Change State
+  const [newPassword, setNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   useEffect(() => {
     fetchSchools();
+    fetchAuthorizedUsers();
   }, []);
+
+  const fetchAuthorizedUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('authorized_access')
+        .select('*, schools(name)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      // Check which users are registered in public.users
+      const emails = (data || []).map(u => u.email);
+      const { data: profiles } = await supabase
+        .from('users')
+        .select('email')
+        .in('email', emails);
+
+      const registeredEmails = new Set((profiles || []).map(p => p.email));
+      const enrichedUsers = (data || []).map(u => ({
+        ...u,
+        is_registered: registeredEmails.has(u.email)
+      }));
+
+      setAuthorizedUsers(enrichedUsers);
+    } catch (error) {
+      console.error('Erro ao buscar usuários autorizados:', error);
+    }
+  };
 
   const fetchSchools = async () => {
     try {
@@ -97,6 +140,27 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
       resetForm();
     } catch (error: any) {
       showAlert('Erro ao salvar', error.message, 'error');
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      showAlert("Erro", "A senha deve ter pelo menos 6 caracteres.", "error");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      showToast("Sua senha foi atualizada!", "success");
+      setNewPassword('');
+      setIsSettingsOpen(false);
+    } catch (error: any) {
+      showAlert("Erro ao atualizar senha", error.message, "error");
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -203,6 +267,97 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
   const activeSchools = schools.filter(s => s.active).length;
   const blockedSchools = schools.filter(s => !s.active).length;
 
+  const handleCreateAuthorizedUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserEmail || !newUserSchoolId) return;
+
+    setIsProvisioning(true);
+    try {
+      // Se houver uma senha, usamos a Edge Function para criar TUDO (Auth + Profile)
+      if (newUserPassword && userModalMode === 'create') {
+        const { data, error } = await supabase.functions.invoke('provision_school_user', {
+          body: {
+            email: newUserEmail.toLowerCase().trim(),
+            password: newUserPassword,
+            school_id: newUserSchoolId,
+            role: 'school_admin'
+          }
+        });
+
+        if (error) throw error;
+        showToast("Usuário criado e vinculado com sucesso!", "success");
+      } else {
+        // Fallback para apenas autorização manual ou edição
+        const payload = {
+          email: newUserEmail.toLowerCase().trim(),
+          school_id: newUserSchoolId
+        };
+
+        if (userModalMode === 'edit' && editingUser) {
+          const { error } = await supabase
+            .from('authorized_access')
+            .update(payload)
+            .eq('id', editingUser.id);
+          if (error) throw error;
+          showToast("Acesso atualizado!");
+        } else {
+          const { error } = await supabase
+            .from('authorized_access')
+            .insert([payload]);
+
+          if (error) {
+            if (error.message.includes('unique constraint')) {
+              throw new Error("Este email já possui acesso configurado.");
+            }
+            throw error;
+          }
+          showToast("Acesso autorizado! (Aguardando primeiro acesso)", "success");
+        }
+      }
+
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserSchoolId('');
+      setEditingUser(null);
+      setIsUserModalOpen(false);
+      fetchAuthorizedUsers();
+    } catch (error: any) {
+      showAlert("Erro ao salvar", error.message, "error");
+    } finally {
+      setIsProvisioning(false);
+    }
+  };
+
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setNewUserEmail(user.email);
+    setNewUserPassword(''); // Não editamos senha via CRUD de autorização
+    setNewUserSchoolId(user.school_id);
+    setUserModalMode('edit');
+    setIsUserModalOpen(true);
+  };
+
+  const handleViewUser = (user: any) => {
+    setEditingUser(user);
+    setNewUserEmail(user.email);
+    setNewUserSchoolId(user.school_id);
+    setUserModalMode('view');
+    setIsUserModalOpen(true);
+  };
+
+  const handleDeleteAuthorizedUser = async (id: string, email: string) => {
+    if (!await showConfirm("Revogar acesso?", `Deseja realmente remover o acesso de ${email}?`)) return;
+
+    try {
+      const { error } = await supabase.from('authorized_access').delete().eq('id', id);
+      if (error) throw error;
+      setAuthorizedUsers(prev => prev.filter(u => u.id !== id));
+      showToast("Acesso revogado.");
+    } catch (error: any) {
+      showAlert("Erro ao revogar", error.message, "error");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 font-outfit p-8">
       {/* Header */}
@@ -213,148 +368,268 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
           </h1>
           <p className="text-slate-500">Controle total das franquias e faturamento.</p>
         </div>
-        <button onClick={onLogout} className="flex items-center px-4 py-2 text-red-400 hover:bg-red-900/20 rounded-lg transition-colors">
-          <LogOut className="w-4 h-4 mr-2" /> Sair
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 text-slate-400 hover:text-white transition-colors"
+            title="Segurança"
+          >
+            <Shield className="w-5 h-5" />
+          </button>
+          <button onClick={onLogout} className="flex items-center px-4 py-2 text-red-400 hover:bg-red-900/20 rounded-lg transition-colors">
+            <LogOut className="w-4 h-4 mr-2" /> Sair
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-4 mb-8 border-b border-slate-700/50">
+        <button
+          onClick={() => setActiveTab('schools')}
+          className={`pb-4 px-2 text-sm font-bold transition-all relative ${activeTab === 'schools' ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4" /> Gestão de Escolas
+          </div>
+          {activeTab === 'schools' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-400" />}
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`pb-4 px-2 text-sm font-bold transition-all relative ${activeTab === 'users' ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          <div className="flex items-center gap-2">
+            <UsersIcon className="w-4 h-4" /> Gestão de Usuários
+          </div>
+          {activeTab === 'users' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-400" />}
         </button>
       </div>
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-slate-400 font-medium">Faturamento Mensal (MRR)</span>
-            <DollarSign className="text-emerald-500 w-5 h-5" />
+      {activeTab === 'schools' ? (
+        <>
+          {/* Metrics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-slate-400 font-medium">Faturamento Mensal (MRR)</span>
+                <DollarSign className="text-emerald-500 w-5 h-5" />
+              </div>
+              <p className="text-4xl font-bold text-white">{formatCurrency(totalMRR)}</p>
+            </div>
+            <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-slate-400 font-medium">Escolas Ativas</span>
+                <Building2 className="text-blue-500 w-5 h-5" />
+              </div>
+              <p className="text-4xl font-bold text-white">{activeSchools}</p>
+            </div>
+            <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-slate-400 font-medium">Escolas Bloqueadas</span>
+                <Lock className="text-red-500 w-5 h-5" />
+              </div>
+              <p className="text-4xl font-bold text-red-400">{blockedSchools}</p>
+            </div>
           </div>
-          <p className="text-4xl font-bold text-white">{formatCurrency(totalMRR)}</p>
-        </div>
-        <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-slate-400 font-medium">Escolas Ativas</span>
-            <Building2 className="text-blue-500 w-5 h-5" />
-          </div>
-          <p className="text-4xl font-bold text-white">{activeSchools}</p>
-        </div>
-        <div className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-slate-400 font-medium">Escolas Bloqueadas</span>
-            <Lock className="text-red-500 w-5 h-5" />
-          </div>
-          <p className="text-4xl font-bold text-red-400">{blockedSchools}</p>
-        </div>
-      </div>
 
-      {/* Schools List */}
-      <div className="bg-slate-800/30 rounded-2xl border border-slate-700 overflow-hidden">
-        <div className="p-6 border-b border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/50">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-indigo-400" /> Escolas Cadastradas
-          </h2>
+          {/* Schools List */}
+          <div className="bg-slate-800/30 rounded-2xl border border-slate-700 overflow-hidden">
+            <div className="p-6 border-b border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/50">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-indigo-400" /> Escolas Cadastradas
+              </h2>
 
-          <div className="flex w-full md:w-auto gap-4">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Buscar escola ou email..."
-                className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              <div className="flex w-full md:w-auto gap-4">
+                <div className="relative flex-1 md:w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Buscar escola ou email..."
+                    className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+
+                <button
+                  onClick={() => { setEditingSchool(null); resetForm(); setModalMode('create'); setIsModalOpen(true); }}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold flex items-center transition-colors shadow-lg shadow-indigo-900/20 whitespace-nowrap"
+                >
+                  <Plus className="w-5 h-5 mr-2" /> Nova Escola
+                </button>
+              </div>
             </div>
 
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+                <tr>
+                  <th className="px-6 py-4">Escola / Email Admin</th>
+                  <th className="px-6 py-4">Plano (SaaS)</th>
+                  <th className="px-6 py-4">Vencimento Fatura</th>
+                  <th className="px-6 py-4">Status Financeiro</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {filteredSchools.map(school => {
+                  const isSaaSOverdue = checkSaaSOverdue(school);
+
+                  return (
+                    <tr key={school.id} className={`hover:bg-slate-800/50 transition-colors ${!school.active ? 'opacity-60 bg-red-900/5' : ''}`}>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-white text-lg">{school.name}</div>
+                        <div className="text-sm text-slate-500">{school.owner_email || 'Email não cadastrado'}</div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-emerald-400">
+                        {formatCurrency(school.subscription_fee || 0)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-slate-500" />
+                          <span>{formatDate(school.subscription_due_date || '')}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isSaaSOverdue ? (
+                          <span className="flex items-center gap-1 text-red-400 text-xs font-bold px-2 py-1 rounded bg-red-900/20 border border-red-900/50">
+                            <AlertOctagon className="w-3 h-3" /> Vencido
+                          </span>
+                        ) : (
+                          <span className="text-emerald-500 text-sm flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Em Dia
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleViewSchool(school)}
+                            className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-colors"
+                            title="Visualizar Detalhes"
+                          >
+                            <Search className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleToggleStatus(school)}
+                            className={`p-2 rounded-lg border transition-all ${school.active
+                              ? 'text-red-400 border-red-900/30 hover:bg-red-900/20'
+                              : 'text-emerald-400 border-emerald-900/30 hover:bg-emerald-900/20 bg-emerald-900/10'
+                              }`}
+                            title={school.active ? "Bloquear Acesso da Escola" : "Desbloquear Acesso"}
+                          >
+                            {school.active ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                          </button>
+
+                          <button
+                            onClick={() => { setEditingSchool(school); setFormData(school); setModalMode('edit'); setIsModalOpen(true); }}
+                            className="p-2 text-indigo-400 hover:bg-indigo-900/20 rounded-lg border border-transparent hover:border-indigo-900/30 transition-colors"
+                            title="Editar Configurações"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteSchool(school.id)}
+                            className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-900/30"
+                            title="Excluir Escola (Destrutivo)"
+                          >
+                            <LogOut className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        /* USER MANAGEMENT TAB */
+        <div className="bg-slate-800/30 rounded-2xl border border-slate-700 overflow-hidden">
+          <div className="p-6 border-b border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/50">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <UsersIcon className="w-5 h-5 text-indigo-400" /> Acessos Autorizados
+            </h2>
             <button
-              onClick={() => { setEditingSchool(null); resetForm(); setModalMode('create'); setIsModalOpen(true); }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold flex items-center transition-colors shadow-lg shadow-indigo-900/20 whitespace-nowrap"
+              onClick={() => {
+                setUserModalMode('create');
+                setNewUserEmail('');
+                setNewUserSchoolId('');
+                setNewUserPassword(''); // Clear password on new user
+                setEditingUser(null);
+                setIsUserModalOpen(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold flex items-center transition-colors shadow-lg shadow-indigo-900/20"
             >
-              <Plus className="w-5 h-5 mr-2" /> Nova Escola
+              <UserPlus className="w-5 h-5 mr-2" /> Novo Acesso
             </button>
           </div>
-        </div>
 
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
-            <tr>
-              <th className="px-6 py-4">Escola / Email Admin</th>
-              <th className="px-6 py-4">Plano (SaaS)</th>
-              <th className="px-6 py-4">Vencimento Fatura</th>
-              <th className="px-6 py-4">Status Financeiro</th>
-              <th className="px-6 py-4 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700/50">
-            {filteredSchools.map(school => {
-              const isSaaSOverdue = checkSaaSOverdue(school);
-
-              return (
-                <tr key={school.id} className={`hover:bg-slate-800/50 transition-colors ${!school.active ? 'opacity-60 bg-red-900/5' : ''}`}>
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+              <tr>
+                <th className="px-6 py-4">Email</th>
+                <th className="px-6 py-4">Escola Vinculada</th>
+                <th className="px-6 py-4">Status Registro</th>
+                <th className="px-6 py-4">Data Autorização</th>
+                <th className="px-6 py-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700/50">
+              {authorizedUsers.length > 0 ? authorizedUsers.map(user => (
+                <tr key={user.id} className="hover:bg-slate-800/50 transition-colors">
+                  <td className="px-6 py-4 text-white font-medium">{user.email}</td>
+                  <td className="px-6 py-4 text-indigo-300 font-bold">{user.schools?.name || 'N/A'}</td>
                   <td className="px-6 py-4">
-                    <div className="font-bold text-white text-lg">{school.name}</div>
-                    <div className="text-sm text-slate-500">{school.owner_email || 'Email não cadastrado'}</div>
-                  </td>
-                  <td className="px-6 py-4 font-medium text-emerald-400">
-                    {formatCurrency(school.subscription_fee || 0)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-slate-500" />
-                      <span>{formatDate(school.subscription_due_date || '')}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {isSaaSOverdue ? (
-                      <span className="flex items-center gap-1 text-red-400 text-xs font-bold px-2 py-1 rounded bg-red-900/20 border border-red-900/50">
-                        <AlertOctagon className="w-3 h-3" /> Vencido
+                    {user.is_registered ? (
+                      <span className="px-2 py-1 bg-emerald-900/40 text-emerald-400 rounded-md text-[10px] uppercase font-black border border-emerald-900/50">
+                        Ativo
                       </span>
                     ) : (
-                      <span className="text-emerald-500 text-sm flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Em Dia
+                      <span className="px-2 py-1 bg-orange-900/40 text-orange-400 rounded-md text-[10px] uppercase font-black border border-orange-900/50">
+                        Pendente
                       </span>
                     )}
                   </td>
+                  <td className="px-6 py-4 text-slate-500 text-sm">{formatDate(user.created_at?.split('T')[0])}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button
-                        onClick={() => handleViewSchool(school)}
-                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-colors"
-                        title="Visualizar Detalhes"
+                        onClick={() => handleViewUser(user)}
+                        className="p-2 text-slate-400 hover:text-blue-400 rounded-lg transition-all"
+                        title="Detalhes"
                       >
                         <Search className="w-4 h-4" />
                       </button>
-
                       <button
-                        onClick={() => handleToggleStatus(school)}
-                        className={`p-2 rounded-lg border transition-all ${school.active
-                          ? 'text-red-400 border-red-900/30 hover:bg-red-900/20'
-                          : 'text-emerald-400 border-emerald-900/30 hover:bg-emerald-900/20 bg-emerald-900/10'
-                          }`}
-                        title={school.active ? "Bloquear Acesso da Escola" : "Desbloquear Acesso"}
-                      >
-                        {school.active ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-                      </button>
-
-                      <button
-                        onClick={() => { setEditingSchool(school); setFormData(school); setModalMode('edit'); setIsModalOpen(true); }}
-                        className="p-2 text-indigo-400 hover:bg-indigo-900/20 rounded-lg border border-transparent hover:border-indigo-900/30 transition-colors"
-                        title="Editar Configurações"
+                        onClick={() => handleEditUser(user)}
+                        className="p-2 text-slate-400 hover:text-indigo-400 rounded-lg transition-all"
+                        title="Editar"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-
                       <button
-                        onClick={() => handleDeleteSchool(school.id)}
-                        className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-900/30"
-                        title="Excluir Escola (Destrutivo)"
+                        onClick={() => handleDeleteAuthorizedUser(user.id, user.email)}
+                        className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-900/20 rounded-lg transition-all"
+                        title="Revogar Acesso"
                       >
-                        <LogOut className="w-4 h-4" />
+                        <UserX className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              )) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500 italic">
+                    Nenhum acesso configurado ainda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Modal Nova/Editar Escola */}
       <AnimatePresence>
@@ -478,6 +753,127 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
                   )}
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Novo Usuário Autorizado */}
+      <AnimatePresence>
+        {isUserModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-[#1e293b] p-8 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl"
+            >
+              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                <UserPlus className="w-6 h-6 text-indigo-400" />
+                {userModalMode === 'create' && 'Autorizar Novo Usuário'}
+                {userModalMode === 'edit' && 'Editar Acesso'}
+                {userModalMode === 'view' && 'Detalhes do Acesso'}
+              </h2>
+              <form onSubmit={handleCreateAuthorizedUser} className="space-y-6">
+                <fieldset disabled={userModalMode === 'view'} className="space-y-6 group-disabled:opacity-80">
+                  <div>
+                    <label className="text-sm text-slate-400 mb-1 block">Email do Usuário</label>
+                    <input
+                      required type="email"
+                      className="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-indigo-500 focus:outline-none placeholder:text-slate-600"
+                      value={newUserEmail}
+                      onChange={e => setNewUserEmail(e.target.value)}
+                      placeholder="exemplo@riseup.com"
+                    />
+                  </div>
+
+                  {userModalMode === 'create' && (
+                    <div>
+                      <label className="text-sm text-slate-400 mb-1 block">Definir Senha de Acesso</label>
+                      <input
+                        required type="text"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-indigo-500 focus:outline-none placeholder:text-slate-600 font-mono"
+                        value={newUserPassword}
+                        onChange={e => setNewUserPassword(e.target.value)}
+                        placeholder="senha123"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-2">
+                        * Ao definir uma senha agora, o usuário será criado **automaticamente** no banco de dados.
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-sm text-slate-400 mb-1 block">Escola Vinculada</label>
+                    <select
+                      required
+                      className="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-indigo-500 focus:outline-none"
+                      value={newUserSchoolId}
+                      onChange={e => setNewUserSchoolId(e.target.value)}
+                    >
+                      <option value="">Selecione a Unidade...</option>
+                      {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+
+                  {userModalMode === 'view' && (
+                    <div className="p-4 bg-indigo-900/20 border border-indigo-500/30 rounded-xl space-y-2">
+                      <p className="text-xs text-indigo-300 font-bold uppercase">Instruções de Acesso</p>
+                      <p className="text-sm text-slate-300 leading-relaxed">
+                        Este usuário deve acessar o sistema usando o email <strong>{newUserEmail}</strong>.
+                        A senha será definida por ele no primeiro acesso (Cadastro).
+                      </p>
+                    </div>
+                  )}
+                </fieldset>
+
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => { setIsUserModalOpen(false); setEditingUser(null); }} className="w-1/2 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors">
+                    {userModalMode === 'view' ? 'Fechar' : 'Cancelar'}
+                  </button>
+                  {userModalMode !== 'view' && (
+                    <button type="submit" disabled={isProvisioning} className="w-1/2 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                      {isProvisioning && <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
+                      {userModalMode === 'create' ? 'Confirmar Acesso' : 'Salvar Alterações'}
+                    </button>
+                  )}
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Segurança Master */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-slate-900 p-8 rounded-2xl w-full max-w-sm border border-slate-700 shadow-2xl relative">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-400" /> Alterar Senha</h3>
+                <button onClick={() => setIsSettingsOpen(false)} className="p-2 text-slate-500 hover:text-white"><X /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">Nova Senha Master</label>
+                  <input
+                    type="password"
+                    className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+                <button
+                  onClick={handleUpdatePassword}
+                  disabled={isUpdatingPassword || !newPassword}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isUpdatingPassword ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                  Confirmar Nova Senha
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

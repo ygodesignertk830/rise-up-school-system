@@ -95,3 +95,14 @@ export interface LessonContent {
   date: string;
   content: string;
 }
+
+export interface AuthorizedAccess {
+  id: string;
+  email: string;
+  school_id: string;
+  role: UserRole;
+  created_at: string;
+  schools?: {
+    name: string;
+  };
+}

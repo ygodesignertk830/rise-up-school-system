@@ -136,28 +136,71 @@ const App: React.FC = () => {
         .eq('id', userId)
         .single();
 
-      // 2. Se não existir perfil na tabela 'public.users', cria automaticamente
+      // 2. SINCRONIZAÇÃO DE ACESSO (Opcional, mas sênior)
+      // Se já existe um perfil, mas há uma regra na 'authorized_access', a regra vence (override).
+      if (userEmail) {
+        const { data: authRecord } = await supabase
+          .from('authorized_access')
+          .select('school_id, role')
+          .eq('email', userEmail.toLowerCase())
+          .maybeSingle();
+
+        if (authRecord && userData) {
+          // Se a escola ou o cargo mudou na autorização, atualiza o perfil do usuário
+          if (userData.school_id !== authRecord.school_id || userData.role !== authRecord.role) {
+            console.log("Atualizando acesso do usuário baseado em novas permissões...");
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({
+                school_id: authRecord.school_id,
+                role: authRecord.role
+              })
+              .eq('id', userId);
+
+            if (!updateError) {
+              userData.school_id = authRecord.school_id;
+              userData.role = authRecord.role;
+            }
+          }
+        }
+      }
+
+      // 3. Se não existir perfil na tabela 'public.users', cria automaticamente
       if (!userData || error) {
         console.log("Perfil não encontrado, criando auto-provisionamento...");
 
-        // Lógica de Atribuição de Escola
+        // Lógica de Atribuição de Escola (Repete o check acima para o INSERT inicial)
         let targetSchoolId: string | null = null;
         let targetRole: UserRole = 'school_admin';
 
         if (userEmail) {
-          const { data: preRegisteredSchool } = await supabase
-            .from('schools')
-            .select('id')
-            .eq('owner_email', userEmail)
-            .single();
+          // 1. PRIORIDADE: Checa tabela de acessos autorizados (Gestão de Usuários)
+          const { data: authorizedAccess } = await supabase
+            .from('authorized_access')
+            .select('school_id, role')
+            .eq('email', userEmail.toLowerCase())
+            .maybeSingle();
 
-          if (preRegisteredSchool) {
-            targetSchoolId = preRegisteredSchool.id;
+          if (authorizedAccess) {
+            targetSchoolId = authorizedAccess.school_id;
+            targetRole = authorizedAccess.role as UserRole;
+            console.log("Acesso autorizado encontrado via Gestão de Usuários.");
+          } else {
+            // 2. SUB-PRIORIDADE: Checa se é o dono direto da escola (owner_email)
+            const { data: ownedSchool } = await supabase
+              .from('schools')
+              .select('id')
+              .eq('owner_email', userEmail)
+              .maybeSingle();
+
+            if (ownedSchool) {
+              targetSchoolId = ownedSchool.id;
+              console.log("Acesso autorizado encontrado via Dono de Escola.");
+            }
           }
         }
 
         // Check if super admin exists (first user becomes super admin)
-        // Use maybeSingle or standard select to avoid error if table empty/error
         const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
 
         if (count === 0) {
@@ -185,7 +228,7 @@ const App: React.FC = () => {
         userData = newUser;
       }
 
-      // 3. Define Estados
+      // 4. Define Estados
       if (userData) {
         setUserRole(userData.role as UserRole);
         setSchoolId(userData.school_id);

@@ -63,6 +63,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [newClass, setNewClass] = useState({ name: '', teacher: '', schedule: '', room: '', color: 'bg-blue-600' });
 
+  // Password Change State
+  const [newPassword, setNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
   // Stats Calculations
   const totalStudents = students.length;
   const currentInterestRate = school?.daily_interest_rate || 0.004;
@@ -93,6 +97,30 @@ const Dashboard: React.FC<DashboardProps> = ({
     } catch (error: any) {
       const { showAlert } = await import('../utils/alerts');
       showAlert("Erro ao atualizar", error.message, 'error');
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      const { showAlert } = await import('../utils/alerts');
+      showAlert("Erro", "A senha deve ter pelo menos 6 caracteres.", "error");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      const { showToast } = await import('../utils/alerts');
+      showToast("Senha atualizada com sucesso!", "success");
+      setNewPassword('');
+      setIsSettingsOpen(false);
+    } catch (error: any) {
+      const { showAlert } = await import('../utils/alerts');
+      showAlert("Erro ao atualizar senha", error.message, "error");
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -515,9 +543,37 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <p className="text-[9px] text-slate-500 font-bold uppercase mb-3">Manutenção de Dados (Senior)</p>
                   <button
                     onClick={handleSyncSpecialFees}
-                    className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl border border-slate-700 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                    className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl border border-slate-700 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider mb-4"
                   >
                     <RefreshCw className="w-4 h-4" /> Corrigir Valores Especiais
+                  </button>
+
+                  <h4 className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-3">Segurança da Conta</h4>
+                  <div className="space-y-3">
+                    <label className="text-xs text-slate-500 block">Nova Senha de Acesso</label>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="password"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                      <button
+                        onClick={handleUpdatePassword}
+                        disabled={isUpdatingPassword || !newPassword}
+                        className="w-full py-3 bg-indigo-600 hover:bg-emerald-600 text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isUpdatingPassword ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                        <span>Atualizar Senha</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-6">
+                  <button onClick={() => setIsSettingsOpen(false)} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors">
+                    Fechar Painel
                   </button>
                 </div>
               </div>
