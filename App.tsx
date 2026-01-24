@@ -92,7 +92,7 @@ const App: React.FC = () => {
           await handleUserProfile(session.user.id, session.user.email, isFreshLogin);
         }
       } else if (event === 'SIGNED_OUT') {
-        // Limpeza Total
+        console.log("SIGNED_OUT event detected. Cleaning up...");
         setIsAuthenticated(false);
         isAuthenticatedRef.current = false;
 
@@ -106,11 +106,10 @@ const App: React.FC = () => {
         isSchoolBlockedRef.current = false;
         fetchingProfileRef.current = false;
 
-        // Garante que o usuário volte para o Login
-        setIsLoading(false);
         setSchoolId(null);
         setSchool(null);
         setUserRole('school_admin');
+        setIsLoading(false);
       }
     });
 
@@ -344,7 +343,14 @@ const App: React.FC = () => {
     try {
       setIsLoading(true);
       await supabase.auth.signOut();
-      // O listener onAuthStateChange agora lidará com o reset de estado.
+
+      // Safety reset (caso o listener SIGNED_OUT demore)
+      setIsAuthenticated(false);
+      setUserRole('school_admin');
+      setSchoolId(null);
+      setSchool(null);
+      setIsLoading(false);
+
     } catch (error) {
       console.error("Erro ao sair:", error);
       setIsLoading(false);
