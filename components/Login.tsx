@@ -64,9 +64,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0B1120] text-white overflow-x-hidden font-outfit">
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0B1120] text-white font-outfit">
       {/* Lado Esquerdo - Animação Espacial */}
-      <div className="w-full lg:w-1/2 min-h-[40vh] lg:min-h-screen relative flex items-center justify-center bg-gradient-to-br from-[#1a1b4b] via-[#2e1065] to-[#0B1120] overflow-hidden">
+      <div className="w-full lg:w-1/2 min-h-[25vh] lg:min-h-screen relative flex items-center justify-center bg-gradient-to-br from-[#1a1b4b] via-[#2e1065] to-[#0B1120] overflow-hidden">
         <div className="absolute inset-0 overflow-hidden">
           {[...Array(20)].map((_, i) => (
             <motion.div
@@ -98,7 +98,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             className="mb-8"
           >
             {/* Logotipo Oficial */}
-            <div className="w-64 h-64 rounded-full flex items-center justify-center relative z-10">
+            <div className="w-14 h-14 md:w-64 md:h-64 rounded-full flex items-center justify-center relative z-10 transition-all duration-500">
               <img
                 src={officialLogo}
                 alt="Rise Up Logo"
@@ -114,7 +114,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 font-outfit"
+            className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 font-outfit"
           >
             Rise UP
           </motion.h1>
@@ -130,7 +130,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       </div>
 
       {/* Lado Direito - Formulário */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#0B1120] min-h-[60vh] lg:min-h-screen">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-[#0B1120] flex-1">
         <motion.div
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
