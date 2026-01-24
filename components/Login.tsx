@@ -129,12 +129,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <ShootingStar />
       </div>
 
-      <div className="relative z-10 w-full max-w-6xl h-full flex flex-col items-center justify-center">
+      <div className="relative z-10 w-full max-w-6xl h-full flex flex-col items-center justify-center p-2 lg:p-0">
 
-        <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-24 mb-16 lg:mb-0">
+        <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-24">
 
           {/* BRANDING HUB - Interactive & Responsive */}
-          <div className="shrink-0">
+          <div className="shrink-0 scale-90 lg:scale-100">
             <motion.div
               initial={{ opacity: 0, scale: 0.7, rotate: -5 }}
               animate={{ opacity: 1, scale: 1, rotate: 0 }}
@@ -144,7 +144,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {/* Pulsing Aura */}
               <div className="absolute inset-0 bg-indigo-500/10 blur-[120px] rounded-full scale-[2.5] animate-pulse" />
 
-              <div className="w-28 h-28 lg:w-72 lg:h-72 rounded-full flex items-center justify-center relative backdrop-blur-3xl border border-white/10 shadow-[0_0_100px_rgba(79,70,229,0.15)] overflow-hidden group-hover:border-indigo-500/30 transition-all duration-1000">
+              <div className="w-24 h-24 lg:w-72 lg:h-72 rounded-full flex items-center justify-center relative backdrop-blur-3xl border border-white/10 shadow-[0_0_100px_rgba(79,70,229,0.15)] overflow-hidden group-hover:border-indigo-500/30 transition-all duration-1000">
                 <div className="absolute inset-0 bg-gradient-to-tr from-indigo-950/40 via-transparent to-blue-900/40 opacity-60" />
                 <img
                   src={officialLogo}
@@ -160,9 +160,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.3 }}
-            className="w-full max-w-md shrink-0 lg:shrink px-2"
+            className="w-full max-w-md shrink-0 lg:shrink px-1"
           >
-            <div className="bg-[#0f172a]/40 backdrop-blur-3xl p-8 md:p-12 rounded-[3.5rem] border border-white/5 shadow-[0_40px_120px_rgba(0,0,0,0.7)] relative overflow-hidden group">
+            <div className="bg-[#0f172a]/40 backdrop-blur-3xl p-6 md:p-12 rounded-[3rem] border border-white/5 shadow-[0_40px_120px_rgba(0,0,0,0.7)] relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none" />
 
               <div className="relative z-10 space-y-8">
