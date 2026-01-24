@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import {
   Building2, DollarSign, Calendar, Lock, Unlock,
   Plus, Search, LogOut, TrendingUp, AlertOctagon,
-  MoreVertical, Edit, Mail, Key, Shield, X, Save
+  MoreVertical, Edit, Mail, Key, Shield, X, Save, Rocket
 } from 'lucide-react';
 import { showToast, showAlert, showConfirm } from '../utils/alerts';
 import { formatCurrency, getLocalDateString, formatDate, getFutureDateString } from '../utils/finance';
@@ -123,7 +123,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
         subscription_fee: formData.subscription_fee,
         subscription_due_date: dueDate,
         active: finalActiveStatus,
-        owner_email: formData.owner_email
+        owner_email: formData.owner_email,
+        premium_whatsapp_reminders: formData.premium_whatsapp_reminders,
+        premium_whatsapp_overdue: formData.premium_whatsapp_overdue
       };
 
       if (editingSchool) {
@@ -189,7 +191,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
       subscription_fee: 499.00,
       subscription_due_date: getFutureDateString(30), // Reset sempre joga +30 dias
       active: true,
-      owner_email: ''
+      owner_email: '',
+      premium_whatsapp_reminders: false
     });
     setTempPassword('');
   };
@@ -682,6 +685,40 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
                           {editingSchool ? 'Se retroativo, bloqueará a escola.' : 'Padrão: +30 dias.'}
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Módulos Especiais */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider border-b border-slate-700 pb-2 flex items-center gap-2">
+                      <Rocket className="w-4 h-4 text-purple-400" /> Módulos Especiais (Upsell)
+                    </h3>
+                    <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-white">WhatsApp Reminder (1-Clique)</p>
+                        <p className="text-[10px] text-slate-400">Ativa o botão de cobrança rápida no painel dos alunos.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, premium_whatsapp_reminders: !formData.premium_whatsapp_reminders })}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${formData.premium_whatsapp_reminders ? 'bg-purple-600' : 'bg-slate-700'}`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.premium_whatsapp_reminders ? 'right-1' : 'left-1'}`}></div>
+                      </button>
+                    </div>
+
+                    <div className="bg-orange-900/10 border border-orange-500/20 p-4 rounded-xl flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-white">WhatsApp Overdue (Cobrança)</p>
+                        <p className="text-[10px] text-slate-400">Ativa o botão de cobrança para mensalidades em ATRASO.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, premium_whatsapp_overdue: !formData.premium_whatsapp_overdue })}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${formData.premium_whatsapp_overdue ? 'bg-orange-600' : 'bg-slate-700'}`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.premium_whatsapp_overdue ? 'right-1' : 'left-1'}`}></div>
+                      </button>
                     </div>
                   </div>
 

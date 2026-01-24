@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { AlertCircle, CheckCircle, Clock, DollarSign } from 'lucide-react';
-import { calculatePaymentDetails, formatCurrency } from '../utils/finance';
+import { AlertCircle, AlertTriangle, CheckCircle, Clock, DollarSign } from 'lucide-react';
+import { calculatePaymentDetails, formatCurrency, getLocalDateString, getUPComingAlert } from '../utils/finance';
 import { Payment, Student, Class } from '../types';
 
 interface FinancialProps {
@@ -71,16 +71,34 @@ const Financial: React.FC<FinancialProps> = ({ payments: rawPayments, students, 
                           <CheckCircle className="w-3 h-3 mr-1" /> Pago
                         </span>
                       )}
-                      {payment.status === 'pending' && (
-                        <span className="flex items-center px-2 py-1 text-xs font-bold rounded-full bg-yellow-900/30 text-yellow-400 border border-yellow-500/30">
-                          <Clock className="w-3 h-3 mr-1" /> Pendente
-                        </span>
-                      )}
-                      {payment.status === 'overdue' && (
-                        <span className="flex items-center px-2 py-1 text-xs font-bold rounded-full bg-red-900/30 text-red-400 border border-red-500/30 animate-pulse">
-                          <AlertCircle className="w-3 h-3 mr-1" /> Atrasado ({payment.daysOverdue}d)
-                        </span>
-                      )}
+
+                      {payment.status !== 'paid' && (() => {
+                        const todayStr = getLocalDateString();
+                        const alert = getUPComingAlert(payment.due_date, todayStr);
+
+                        if (payment.status === 'overdue') {
+                          return (
+                            <span className="flex items-center px-2 py-1 text-xs font-bold rounded-full bg-red-900/30 text-red-400 border border-red-500/30 animate-pulse">
+                              <AlertTriangle className="w-3 h-3 mr-1" /> Atrasado há {payment.daysOverdue} {payment.daysOverdue === 1 ? 'dia' : 'dias'}
+                            </span>
+                          );
+                        }
+
+                        if (alert) {
+                          const isToday = alert.label.includes('HOJE');
+                          return (
+                            <span className={`flex items-center px-2 py-1 text-xs font-bold rounded-full border ${isToday ? 'bg-orange-900/30 text-orange-400 border-orange-500/30' : 'bg-yellow-900/30 text-yellow-500 border-yellow-500/30'}`}>
+                              <Clock className="w-3 h-3 mr-1" /> {alert.label.split(' (')[0]}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="flex items-center px-2 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                            <Clock className="w-3 h-3 mr-1" /> Pendente
+                          </span>
+                        );
+                      })()}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-400">
@@ -120,9 +138,16 @@ const Financial: React.FC<FinancialProps> = ({ payments: rawPayments, students, 
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] text-slate-500 font-bold uppercase">Status</span>
-                  {payment.status === 'paid' && <span className="text-[10px] font-black text-emerald-400">PAGO</span>}
-                  {payment.status === 'pending' && <span className="text-[10px] font-black text-yellow-500">PENDENTE</span>}
-                  {payment.status === 'overdue' && <span className="text-[10px] font-black text-red-500 animate-pulse">ATRASADO ({payment.daysOverdue}d)</span>}
+                  {(() => {
+                    const todayStr = getLocalDateString();
+                    const alert = getUPComingAlert(payment.due_date, todayStr);
+
+                    if (payment.status === 'paid') return <span className="text-[10px] font-black text-emerald-400">PAGO</span>;
+                    if (payment.status === 'overdue') return <span className="text-[10px] font-black text-red-500 animate-pulse uppercase">ATRASADO HÁ {payment.daysOverdue} {payment.daysOverdue === 1 ? 'DIA' : 'DIAS'}</span>;
+                    if (alert) return <span className={`text-[10px] font-black uppercase ${alert.label.includes('HOJE') ? 'text-orange-500' : 'text-yellow-500'}`}>{alert.label.split(' (')[0]}</span>;
+
+                    return <span className="text-[10px] font-black text-slate-500">PENDENTE</span>;
+                  })()}
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] text-slate-500 font-bold uppercase">Total</p>

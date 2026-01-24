@@ -414,7 +414,9 @@ const App: React.FC = () => {
         payment_due_day: recurringDueDay,
         enrollment_date: enrollmentDate,
         status: studentData.status,
-        photo_url: studentData.photo_url
+        photo_url: studentData.photo_url,
+        phone: studentData.phone,
+        guardian_name: studentData.guardian_name
       }]).select().single();
 
       if (studentError) {
@@ -460,7 +462,9 @@ const App: React.FC = () => {
         payment_due_day: updatedStudent.payment_due_day,
         enrollment_date: updatedStudent.enrollment_date,
         status: updatedStudent.status,
-        photo_url: updatedStudent.photo_url
+        photo_url: updatedStudent.photo_url,
+        phone: updatedStudent.phone,
+        guardian_name: updatedStudent.guardian_name
       }).eq('id', updatedStudent.id);
 
       if (error) {

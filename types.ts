@@ -11,6 +11,8 @@ export interface School {
   owner_email?: string; // Email do responsável (usado para vincular o usuário)
   owner_phone?: string;
   daily_interest_rate?: number; // Taxa de juros personalizada (ex: 0.004)
+  premium_whatsapp_reminders?: boolean; // Módulo Premium: Alertas de WhatsApp
+  premium_whatsapp_overdue?: boolean; // Módulo Premium: Alertas de WhatsApp ATRASO
 }
 
 export type UserRole = 'super_admin' | 'school_admin';
@@ -43,6 +45,8 @@ export interface Student {
   payment_due_day: number; // Dia de vencimento preferencial (ex: 10)
   enrollment_date: string;
   photo_url?: string;
+  phone?: string;
+  guardian_name?: string;
   status: StudentStatus;
   // Computed for UI convenience
   className?: string;

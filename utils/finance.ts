@@ -29,20 +29,26 @@ export const getDaysDifference = (dateAStr: string, dateBStr: string): number =>
  * < 0: overdue (Vermelho + Juros)
  */
 export const getPaymentStatus = (dueDateStr: string, referenceDateStr: string): PaymentDetailedStatus => {
-  // OBS: getDaysDifference retorna (Data1 - Data2).
-  // Se quisermos (Vencimento - Hoje), temos que passar (dueDate, today).
-  // Se dueDate >= referenceDate (diff >= 0): Em Dia (on_time) ou Vence Hoje (due_today)
-  // Se dueDate < referenceDate (diff < 0): Atrasado (overdue)
   const diffDays = getDaysDifference(dueDateStr, referenceDateStr);
 
-  // Nova Lógica Simplificada Acre (Sem janela de 3 dias)
   if (diffDays === 0) return 'due_today';
-
-  // Qualquer dia futuro (1, 2, 3, 30...) é 'on_time' (Em Dia)
-  // A UI pode decidir se quer mostrar "Vence em X dias", mas o status financeiro é VERDE.
   if (diffDays > 0) return 'on_time';
 
   return 'overdue';
+};
+
+/**
+ * Retorna o alerta de vencimento antecipado (3 dias, 2 dias, Hoje)
+ * conforme requisitado pela escola.
+ */
+export const getUPComingAlert = (dueDateStr: string, referenceDateStr: string) => {
+  const diffDays = getDaysDifference(dueDateStr, referenceDateStr);
+
+  if (diffDays === 0) return { label: 'VENCE HOJE!', color: 'text-white bg-red-600', isCritical: true };
+  if (diffDays === 1) return { label: `Vence em 2 dias (${formatDate(dueDateStr)})`, color: 'text-amber-900 bg-amber-400', isWarning: true };
+  if (diffDays === 2) return { label: `Vence em 3 dias (${formatDate(dueDateStr)})`, color: 'text-amber-900 bg-amber-400', isWarning: true };
+
+  return null;
 };
 
 /**

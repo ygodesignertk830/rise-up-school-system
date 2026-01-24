@@ -239,6 +239,34 @@ const Dashboard: React.FC<DashboardProps> = ({
   const totalPendingValue = pendingPayments.reduce((acc, curr) => acc + (curr.calculatedAmount || curr.amount), 0);
   const totalProjection = receivedThisMonth + totalPendingValue + totalOverdue;
 
+  // Detailed alert strings for Dashboard
+  const overdueAlertsList = overduePayments.map(p => {
+    const s = students.find(std => std.id === p.student_id);
+    return s ? `${s.name} está atrasado a ${p.daysOverdue} ${p.daysOverdue === 1 ? 'dia' : 'dias'}` : null;
+  }).filter(Boolean);
+
+  const dueTodayAlertsList = upcomingPayments.map(p => {
+    const s = students.find(std => std.id === p.student_id);
+    return s ? `${s.name} vence hoje` : null;
+  }).filter(Boolean);
+
+  const upcomingInclusivePayments = pendingPayments.filter(p => {
+    const diff = getDaysDifference(p.due_date, todayStr);
+    return diff > 0 && diff <= 2; // 1 or 2 diff = "Vence em 2 ou 3 dias"
+  });
+
+  const upcomingAlertsList = upcomingInclusivePayments.map(p => {
+    const s = students.find(std => std.id === p.student_id);
+    const diff = getDaysDifference(p.due_date, todayStr);
+    const labelDays = diff + 1; // Inclusive: 1->2, 2->3
+    return s ? `${s.name} está ${labelDays} dias vencendo` : null;
+  }).filter(Boolean);
+
+  const overdueDisplay = overdueAlertsList.length > 0 ? overdueAlertsList : [`${overduePayments.length} em atraso`];
+  const pendingDisplay = [...dueTodayAlertsList, ...upcomingAlertsList].length > 0
+    ? [...dueTodayAlertsList, ...upcomingAlertsList]
+    : (upcomingCount > 0 ? (isAnyDueToday ? ['❗ VENCENDO HOJE'] : [`${upcomingCount} VENCENDO LOGO`]) : [`${pendingCount} agendados`]);
+
   const notifications = useMemo(() => {
     if (!students.length) return [];
     // Removido 'upcoming' do tipo de alerta, pois simplificamos a lógica
@@ -460,8 +488,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                       {[
                         { label: 'Alunos', value: totalStudents, color: 'text-indigo-400', icon: Users, bg: 'bg-indigo-500/10', pulse: false },
                         { label: 'Faturamento', value: formatCurrency(receivedThisMonth), color: 'text-emerald-400', icon: CheckCircle, bg: 'bg-emerald-500/10', sub: interestReceived > 0 ? `+${formatCurrency(interestReceived)} juros` : null, pulse: false },
-                        { label: 'Dívidas', value: formatCurrency(totalOverdue), color: 'text-red-400', icon: AlertTriangle, bg: 'bg-red-500/10', sub: `${overduePayments.length} em atraso`, pulse: false },
-                        { label: 'Pendentes', value: formatCurrency(totalPendingValue), color: 'text-yellow-400', icon: Clock, bg: 'bg-yellow-500/10', sub: upcomingCount > 0 ? (isAnyDueToday ? '❗ VENCENDO HOJE' : `${upcomingCount} VENCENDO LOGO`) : `${pendingCount} agendados`, pulse: isAnyDueToday }
+                        { label: 'Dívidas', value: formatCurrency(totalOverdue), color: 'text-red-400', icon: AlertTriangle, bg: 'bg-red-500/10', subList: overdueDisplay, pulse: false },
+                        { label: 'Pendentes', value: formatCurrency(totalPendingValue), color: 'text-yellow-400', icon: Clock, bg: 'bg-yellow-500/10', subList: pendingDisplay, pulse: isAnyDueToday }
                       ].map((stat, i) => (
                         <div key={i} className={`bg-slate-800/40 p-4 md:p-6 rounded-[2rem] border shadow-xl relative overflow-hidden group transition-all duration-500 ${stat.pulse ? 'border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.15)]' : 'border-slate-700'}`}>
                           {stat.pulse && (
@@ -477,10 +505,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className={`p-1.5 md:p-2 ${stat.bg} rounded-xl`}><stat.icon className={`w-4 h-4 md:w-5 md:h-5 ${stat.color} ${stat.pulse ? 'animate-pulse' : ''}`} /></div>
                           </div>
                           <h3 className="text-2xl md:text-3xl font-black text-white tracking-tighter truncate">{stat.value}</h3>
-                          {stat.sub && (
+
+                          {(stat as any).sub && (
                             <p className={`text-[8px] md:text-[10px] font-black uppercase mt-1.5 md:mt-2 truncate ${stat.pulse ? 'text-yellow-500 animate-bounce' : stat.color}`}>
-                              {stat.sub}
+                              {(stat as any).sub}
                             </p>
+                          )}
+
+                          {(stat as any).subList && (
+                            <div className="mt-2 space-y-1 max-h-[40px] overflow-y-auto custom-scrollbar">
+                              {(stat as any).subList.map((item: string, idx: number) => (
+                                <p key={idx} className={`text-[8px] md:text-[9px] font-bold uppercase truncate leading-tight ${stat.pulse ? 'text-yellow-500 animate-pulse' : stat.color}`}>
+                                  • {item}
+                                </p>
+                              ))}
+                            </div>
                           )}
                         </div>
                       ))}
@@ -524,6 +563,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                     students={students} classes={classes} payments={payments} interestRate={currentInterestRate}
                     onAddStudent={onAddStudent} onEditStudent={onEditStudent} onDeleteStudent={onDeleteStudent}
                     onTogglePayment={onTogglePayment} onUpdatePaymentDate={onUpdatePaymentDate} onForgiveDebt={onForgiveDebt}
+                    premiumWhatsAppEnabled={school?.premium_whatsapp_reminders}
+                    premiumWhatsAppOverdueEnabled={school?.premium_whatsapp_overdue}
                   />
                 </div>
               )}

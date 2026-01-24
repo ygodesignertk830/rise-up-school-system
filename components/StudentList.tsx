@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Plus, X, Upload, Camera, Edit2, Eye, Rocket, CheckCircle, AlertTriangle, ShieldCheck, Trash2, Calendar, RotateCcw, CalendarDays, ArrowRight, Sparkles, FileText, Users, Clock } from 'lucide-react';
 import { Student, Class, Payment } from '../types';
-import { formatCurrency, formatDate, getLocalDateString, calculatePaymentDetails, getPaymentStatus, getDaysDifference, calculateNextMonthSameDay, STUDENT_POLICIES } from '../utils/finance';
+import { formatCurrency, formatDate, getLocalDateString, calculatePaymentDetails, getPaymentStatus, getDaysDifference, calculateNextMonthSameDay, STUDENT_POLICIES, getUPComingAlert } from '../utils/finance';
 import { motion, AnimatePresence } from 'framer-motion';
+import { showAlert } from '../utils/alerts';
 
 interface StudentListProps {
     students: Student[];
@@ -15,6 +16,7 @@ interface StudentListProps {
     onTogglePayment?: (id: string) => void;
     onUpdatePaymentDate?: (paymentId: string, newDate: string) => void;
     onForgiveDebt?: (id: string) => void;
+    premiumWhatsAppEnabled?: boolean;
 }
 
 const StudentList: React.FC<StudentListProps> = ({
@@ -27,7 +29,9 @@ const StudentList: React.FC<StudentListProps> = ({
     onDeleteStudent,
     onTogglePayment,
     onUpdatePaymentDate,
-    onForgiveDebt
+    onForgiveDebt,
+    premiumWhatsAppEnabled = false,
+    premiumWhatsAppOverdueEnabled = false
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,6 +93,8 @@ const StudentList: React.FC<StudentListProps> = ({
             monthly_fee: 150,
             status: 'active',
             photo_url: undefined,
+            phone: '',
+            guardian_name: '',
             enrollment_date: today,
             payment_due_day: parseInt(today.split('-')[2])
         });
@@ -165,7 +171,9 @@ const StudentList: React.FC<StudentListProps> = ({
             enrollment_date: formData.enrollment_date || getLocalDateString(),
             payment_due_day: formData.payment_due_day || 10,
             status: formData.status as 'active' | 'inactive',
-            photo_url: formData.photo_url
+            photo_url: formData.photo_url,
+            phone: formData.phone,
+            guardian_name: formData.guardian_name
         };
 
         if (modalMode === 'add') {
@@ -176,6 +184,49 @@ const StudentList: React.FC<StudentListProps> = ({
         }
 
         handleCloseModal();
+    };
+
+    // MÓDULO PREMIUM: WhatsApp Reminder
+    const handleWhatsAppReminder = (student: any) => {
+        const phone = student.phone || '';
+        if (!phone) {
+            showAlert("⚠️ Atenção", "Número de telefone não cadastrado para este aluno.", "warning");
+            return;
+        }
+
+        const days = student.daysUntilDue;
+        const todayStr = getLocalDateString();
+        const valueStr = formatCurrency(student.monthly_fee);
+
+        const greeting = student.guardian_name ? `Olá *${student.guardian_name}*!` : `Olá!`;
+        let message = `${greeting} Passando para lembrar que a mensalidade do(a) aluno(a) *${student.name}* vence em breve (${formatDate(student.relevantDate)}). Valor: ${valueStr}. Conte conosco!`;
+        if (days === 0) message = `${greeting} Passando para lembrar que a mensalidade do(a) aluno(a) *${student.name}* *VENCE HOJE*. Valor: ${valueStr}. Conte conosco!`;
+        else if (days === 1) message = `${greeting} Passando para lembrar que a mensalidade do(a) aluno(a) *${student.name}* vence em *2 DIAS* (${formatDate(student.relevantDate)}). Valor: ${valueStr}. Conte conosco!`;
+        else if (days === 2) message = `${greeting} Passando para lembrar que a mensalidade do(a) aluno(a) *${student.name}* vence em *3 DIAS* (${formatDate(student.relevantDate)}). Valor: ${valueStr}. Conte conosco!`;
+
+        const cleanPhone = phone.replace(/\D/g, '');
+        const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
+    };
+
+    const handleWhatsAppOverdueReminder = (student: any) => {
+        const phone = student.phone || '';
+        if (!phone) {
+            showAlert("⚠️ Atenção", "Número de telefone não cadastrado para este aluno.", "warning");
+            return;
+        }
+
+        const totalDebtStr = formatCurrency(student.totalDebt);
+        const interestStr = formatCurrency(student.totalInterest);
+        const baseFeeStr = formatCurrency(student.monthly_fee);
+        const ratePct = (interestRate * 100).toFixed(1);
+
+        const greeting = student.guardian_name ? `Olá *${student.guardian_name}*!` : `Olá!`;
+        const message = `${greeting} Passando para informar que a mensalidade do(a) aluno(a) *${student.name}* consta em nosso sistema como *ATRASADA* (${student.daysOverdue} ${student.daysOverdue === 1 ? 'dia' : 'dias'}).\n\n*Resumo financeiro:*\n• Valor original: ${baseFeeStr}\n• Juros acumulados: ${interestStr} (Taxa: ${ratePct}% ao dia)\n• *Valor total atualizado: ${totalDebtStr}*\n\nPor favor, regularize assim que possível. Conte conosco!`;
+
+        const cleanPhone = phone.replace(/\D/g, '');
+        const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
     };
 
     const handlePaymentClick = (id: string, isCurrentlyPaid: boolean) => {
@@ -219,6 +270,7 @@ const StudentList: React.FC<StudentListProps> = ({
                 isDueToday: false,
                 isOnTime: true, // Default se não houver problemas
                 daysUntilDue: 0,
+                daysOverdue: 0,
                 totalDebt: 0,
                 totalInterest: 0,
                 relevantDate: ''
@@ -234,7 +286,9 @@ const StudentList: React.FC<StudentListProps> = ({
                 primaryStatus.totalDebt = overduePayments.reduce((acc, curr) => acc + (curr.calculatedAmount || 0), 0);
                 primaryStatus.totalInterest = overduePayments.reduce((acc, curr) => acc + (curr.interest || 0), 0);
                 // Data mais antiga de atraso
-                primaryStatus.relevantDate = overduePayments.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0].due_date;
+                const oldest = overduePayments.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+                primaryStatus.relevantDate = oldest.due_date;
+                primaryStatus.daysOverdue = oldest.daysOverdue || 0;
             } else if (dueTodayPayments.length > 0) {
                 primaryStatus.isDueToday = true;
                 primaryStatus.isOnTime = false;
@@ -244,7 +298,14 @@ const StudentList: React.FC<StudentListProps> = ({
                 const next = pendingPayments.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
                 primaryStatus.relevantDate = next.due_date;
                 // Calculamos dias apenas para labels informativos se desejado ("Vence em X dias"), mas status é VERDE
-                primaryStatus.daysUntilDue = getDaysDifference(next.due_date, todayStr);
+                const diff = getDaysDifference(next.due_date, todayStr);
+                primaryStatus.daysUntilDue = diff;
+
+                // Alerta de 3 dias (Amarelo)
+                if (diff > 0 && diff <= 3) {
+                    primaryStatus.isOnTime = false;
+                    primaryStatus.isDueToday = false; // Just to be safe
+                }
             } else {
                 // Sem pendências
                 primaryStatus.relevantDate = '';
@@ -269,10 +330,11 @@ const StudentList: React.FC<StudentListProps> = ({
             return {
                 ...s,
                 className: classes.find(c => c.id === s.class_id)?.name || 'N/A',
+                phone: (s as any).phone || '', // Adicionado dinamicamente
                 ...primaryStatus,
                 actionPayment,
-                // Mantemos propertys auxiliares para não quebrar UI existente que espera 'isUpcoming' como false
-                isUpcoming: false,
+                // Mantemos propertys auxiliares
+                isUpcoming: primaryStatus.daysUntilDue > 0 && primaryStatus.daysUntilDue <= 3,
                 isScholarship // EXPORT FLAG
             };
         });
@@ -289,7 +351,7 @@ const StudentList: React.FC<StudentListProps> = ({
                 hasOverdue: processed.status === 'overdue',
                 isDueToday: status === 'due_today',
                 // Upcoming nao existe mais como status distinto, é 'on_time', mas criamos flag para não quebrar UI se necessário
-                isUpcoming: false,
+                isUpcoming: status === 'on_time' && (getDaysDifference(processed.due_date, todayStr) > 0 && getDaysDifference(processed.due_date, todayStr) <= 3),
                 isOnTime: status === 'on_time',
                 daysUntilDue: getDaysDifference(processed.due_date, todayStr),
                 totalDebt: processed.calculatedAmount || processed.amount,
@@ -378,11 +440,19 @@ const StudentList: React.FC<StudentListProps> = ({
                                             {student.hasOverdue ? (
                                                 <div className="flex flex-col items-start bg-red-400/5 p-2 rounded-xl border border-red-500/20">
                                                     <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold bg-red-900 text-red-100 border border-red-500 animate-pulse mb-1 uppercase">
-                                                        <AlertTriangle className="w-3 h-3 mr-1" /> Atrasado
+                                                        <AlertTriangle className="w-3 h-3 mr-1" /> Atrasado há {student.daysOverdue} {student.daysOverdue === 1 ? 'dia' : 'dias'}
                                                     </span>
                                                     <span className="text-sm text-red-400 font-black">
                                                         {formatCurrency(student.totalDebt)}
                                                     </span>
+                                                    {premiumWhatsAppOverdueEnabled && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleWhatsAppOverdueReminder(student); }}
+                                                            className="mt-2 flex items-center gap-1 text-[9px] font-black text-emerald-400 hover:text-emerald-300 transition-colors uppercase py-1 px-2 bg-emerald-900/10 rounded-lg border border-emerald-500/20"
+                                                        >
+                                                            <Rocket className="w-3 h-3" /> Cobrar Atraso (Whats)
+                                                        </button>
+                                                    )}
                                                     {student.totalInterest > 0 && (
                                                         <span className="text-[10px] text-red-400/70 font-mono">
                                                             (+ {formatCurrency(student.totalInterest)} juros)
@@ -397,17 +467,35 @@ const StudentList: React.FC<StudentListProps> = ({
                                                     <span className="text-sm font-black text-amber-500">
                                                         PAGAR HOJE
                                                     </span>
+                                                    {premiumWhatsAppEnabled && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(student); }}
+                                                            className="mt-2 flex items-center gap-1 text-[9px] font-black text-emerald-400 hover:text-emerald-300 transition-colors uppercase bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20"
+                                                        >
+                                                            <Rocket className="w-3 h-3" /> Lembrar via Whats
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ) : student.isUpcoming ? (
-                                                <div className="flex flex-col items-start bg-yellow-400/5 p-2 rounded-xl border border-yellow-500/20">
-                                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold bg-yellow-600 text-yellow-50 border border-yellow-400 mb-1 uppercase">
+                                                <div className="flex flex-col items-start bg-amber-400/5 p-2 rounded-xl border border-amber-500/20">
+                                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold bg-amber-400 text-amber-900 border border-amber-500 mb-1 uppercase">
                                                         <Clock className="w-3 h-3 mr-1" /> Atenção
                                                     </span>
-                                                    <span className="text-sm font-black text-yellow-500">
-                                                        {student.daysUntilDue === 1
-                                                            ? 'VENCE AMANHÃ'
-                                                            : `Vence em ${student.daysUntilDue} dias`}
+                                                    <span className="text-sm font-black text-amber-500">
+                                                        {student.daysUntilDue === 0
+                                                            ? 'VENCE HOJE'
+                                                            : student.daysUntilDue === 1
+                                                                ? 'VENCE EM 2 DIAS'
+                                                                : 'VENCE EM 3 DIAS'}
                                                     </span>
+                                                    {premiumWhatsAppEnabled && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(student); }}
+                                                            className="mt-2 flex items-center gap-1 text-[9px] font-black text-emerald-400 hover:text-emerald-300 transition-colors uppercase bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20"
+                                                        >
+                                                            <Rocket className="w-3 h-3" /> Lembrar via Whats
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-col items-start bg-emerald-400/5 p-2 rounded-xl border border-emerald-500/20">
@@ -508,10 +596,20 @@ const StudentList: React.FC<StudentListProps> = ({
                                     }`}>
                                     {student.hasOverdue ? (
                                         <div>
-                                            <p className="text-[10px] text-red-400 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
-                                                <AlertTriangle className="w-3 h-3" /> Em Atraso
+                                            <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
+                                                <AlertTriangle className="w-3 h-3" /> Atrasado há {student.daysOverdue} {student.daysOverdue === 1 ? 'dia' : 'dias'}
                                             </p>
-                                            <p className="text-lg font-black text-white">{formatCurrency(student.totalDebt)}</p>
+                                            <p className="text-lg font-black text-red-500 uppercase">
+                                                DÉBITO EM ABERTO
+                                            </p>
+                                            {premiumWhatsAppOverdueEnabled && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleWhatsAppOverdueReminder(student); }}
+                                                    className="mt-2 flex items-center gap-1 text-[10px] font-black text-emerald-400 hover:text-emerald-300 transition-colors uppercase py-2 px-3 bg-emerald-900/10 rounded-xl border border-emerald-500/20 w-fit"
+                                                >
+                                                    <Rocket className="w-4 h-4" /> Cobrar via Whats
+                                                </button>
+                                            )}
                                         </div>
                                     ) : student.isDueToday ? (
                                         <motion.div
@@ -522,20 +620,38 @@ const StudentList: React.FC<StudentListProps> = ({
                                             <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
                                                 <Clock className="w-3 h-3" /> Vence Hoje
                                             </p>
-                                            <p className="text-lg font-black text-amber-500">PAGAR HOJE!</p>
+                                            <p className="text-lg font-black text-amber-500 uppercase">PAGAR HOJE!</p>
+                                            {premiumWhatsAppEnabled && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(student); }}
+                                                    className="mt-1 flex items-center gap-1 text-[9px] font-black text-emerald-400 hover:text-emerald-300 transition-colors uppercase py-1"
+                                                >
+                                                    <Rocket className="w-3 h-3" /> Cobrança 1-Clique
+                                                </button>
+                                            )}
                                         </motion.div>
                                     ) : student.isUpcoming ? (
                                         <motion.div
-                                            animate={{ opacity: [1, 0.7, 1], scale: [1, 1.01, 1] }}
+                                            animate={{ opacity: [1, 0.8, 1] }}
                                             transition={{ duration: 2, repeat: Infinity }}
                                             className="flex flex-col items-start"
                                         >
-                                            <p className="text-[10px] text-yellow-500 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
+                                            <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
                                                 <Clock className="w-3 h-3" /> Atenção
                                             </p>
-                                            <p className="text-lg font-black text-yellow-500">{student.daysUntilDue === 1 ? 'VENCE AMANHÃ' : `Vence em ${student.daysUntilDue} dias`}</p>
+                                            <p className="text-lg font-black text-amber-500 uppercase">
+                                                {student.daysUntilDue === 0 ? 'VENCE HOJE' : student.daysUntilDue === 1 ? 'VENCE EM 2 DIAS' : 'VENCE EM 3 DIAS'}
+                                            </p>
+                                            {premiumWhatsAppEnabled && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(student); }}
+                                                    className="mt-1 flex items-center gap-1 text-[9px] font-black text-emerald-400 hover:text-emerald-300 transition-colors uppercase py-1"
+                                                >
+                                                    <Rocket className="w-3 h-3" /> Cobrança 1-Clique
+                                                </button>
+                                            )}
                                         </motion.div>
-                                    ) : student.isOnTime ? (
+                                    ) : (
                                         <motion.div
                                             animate={{ opacity: [1, 0.6, 1], scale: [1, 1.02, 1] }}
                                             transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -546,13 +662,6 @@ const StudentList: React.FC<StudentListProps> = ({
                                             </p>
                                             <p className="text-lg font-black text-emerald-500">REGULAR</p>
                                         </motion.div>
-                                    ) : (
-                                        <div>
-                                            <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
-                                                <CheckCircle className="w-3 h-3" /> Em Dia
-                                            </p>
-                                            <p className="text-lg font-black text-slate-400">Regularizado</p>
-                                        </div>
                                     )}
 
                                     {student.actionPayment && onTogglePayment && (
@@ -731,14 +840,24 @@ const StudentList: React.FC<StudentListProps> = ({
                                                                     );
 
                                                                     if (next.isUpcoming) return (
-                                                                        <motion.div
-                                                                            animate={{ scale: [1, 1.05, 1], backgroundColor: ['#ca8a04', '#eab308', '#ca8a04'] }}
-                                                                            transition={{ duration: 1.5, repeat: Infinity }}
-                                                                            className="flex-shrink-0 border p-4 rounded-2xl text-center min-w-[140px] shadow-lg bg-yellow-600 border-yellow-400"
-                                                                        >
-                                                                            <p className="text-[10px] text-white font-bold uppercase mb-1">{next.daysUntilDue === 1 ? 'VENCE AMANHÃ' : `Vence em ${next.daysUntilDue} dias`}</p>
-                                                                            <p className="text-xl font-black text-white flex items-center justify-center gap-1"><Clock className="w-4 h-4" /> ATENÇÃO</p>
-                                                                        </motion.div>
+                                                                        <div className="flex flex-col items-center gap-2">
+                                                                            <motion.div
+                                                                                animate={{ scale: [1, 1.05, 1], backgroundColor: ['#d97706', '#f59e0b', '#d97706'] }}
+                                                                                transition={{ duration: 1.5, repeat: Infinity }}
+                                                                                className="flex-shrink-0 border p-4 rounded-2xl text-center min-w-[140px] shadow-lg bg-amber-600 border-amber-400"
+                                                                            >
+                                                                                <p className="text-[10px] text-white font-bold uppercase mb-1">{next.daysUntilDue === 0 ? 'VENCE HOJE' : next.daysUntilDue === 1 ? 'Vence em 2 dias' : 'Vence em 3 dias'}</p>
+                                                                                <p className="text-xl font-black text-white flex items-center justify-center gap-1"><Clock className="w-4 h-4" /> ATENÇÃO</p>
+                                                                            </motion.div>
+                                                                            {premiumWhatsAppEnabled && (
+                                                                                <button
+                                                                                    onClick={() => handleWhatsAppReminder({ ...formData, daysUntilDue: next.daysUntilDue, relevantDate: next.due_date })}
+                                                                                    className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition-all"
+                                                                                >
+                                                                                    <Rocket className="w-3 h-3" /> Cobrar via WhatsApp
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                     );
                                                                 }
 
@@ -855,9 +974,13 @@ const StudentList: React.FC<StudentListProps> = ({
                                                                 transition={{ delay: 0.1 * idx }}
                                                                 className={`group flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl border backdrop-blur-sm transition-all duration-300 hover:translate-x-1 ${payment.hasOverdue && payment.status !== 'paid'
                                                                     ? 'bg-gradient-to-r from-red-900/10 to-red-900/5 border-red-500/30 hover:border-red-500/50 hover:shadow-[0_0_20px_rgba(239,68,68,0.1)]'
-                                                                    : payment.isOnTime && payment.status === 'pending'
-                                                                        ? 'bg-gradient-to-r from-emerald-900/10 to-emerald-900/5 border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)]'
-                                                                        : 'bg-gradient-to-r from-slate-800/40 to-slate-800/20 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/60'
+                                                                    : payment.isDueToday && payment.status === 'pending'
+                                                                        ? 'bg-gradient-to-r from-amber-600/20 to-amber-600/10 border-amber-500/50 hover:border-amber-400 shadow-[0_0_20px_rgba(217,119,6,0.1)]'
+                                                                        : payment.isUpcoming && payment.status === 'pending'
+                                                                            ? 'bg-gradient-to-r from-amber-900/10 to-amber-900/5 border-amber-500/30 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)]'
+                                                                            : payment.isOnTime && payment.status === 'pending'
+                                                                                ? 'bg-gradient-to-r from-emerald-900/10 to-emerald-900/5 border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)]'
+                                                                                : 'bg-gradient-to-r from-slate-800/40 to-slate-800/20 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/60'
                                                                     }`}
                                                             >
                                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
@@ -870,7 +993,16 @@ const StudentList: React.FC<StudentListProps> = ({
                                                                             </>
                                                                         ) : (
                                                                             <div className="flex items-center gap-2">
-                                                                                <span className="flex items-center gap-1.5 text-blue-400"><Calendar className="w-3.5 h-3.5" /> VENCIMENTO</span>
+                                                                                {(() => {
+                                                                                    const alert = getUPComingAlert(payment.due_date, getLocalDateString());
+                                                                                    if (alert) return (
+                                                                                        <span className={`flex items-center gap-1.5 ${alert.color.split(' ')[0]} font-black`}><Clock className="w-3.5 h-3.5" /> {alert.label.split(' (')[0].toUpperCase()}</span>
+                                                                                    );
+                                                                                    if (payment.hasOverdue) return (
+                                                                                        <span className="flex items-center gap-1.5 text-red-500 font-black"><AlertTriangle className="w-3.5 h-3.5" /> ATRASADO HÁ {payment.daysOverdue} {payment.daysOverdue === 1 ? 'DIA' : 'DIAS'}</span>
+                                                                                    );
+                                                                                    return <span className="flex items-center gap-1.5 text-blue-400"><Calendar className="w-3.5 h-3.5" /> VENCIMENTO</span>;
+                                                                                })()}
                                                                                 <span className="text-slate-600">•</span>
                                                                                 <input
                                                                                     type="date"
@@ -883,7 +1015,7 @@ const StudentList: React.FC<StudentListProps> = ({
                                                                         )}
                                                                     </div>
                                                                     <div className="flex items-center gap-3 mt-1">
-                                                                        <span className={`text-2xl font-bold tracking-tight ${payment.hasOverdue && payment.status !== 'paid' ? 'text-red-400' : 'text-white'}`}>
+                                                                        <span className={`text-2xl font-black tracking-tight ${payment.status !== 'paid' ? (payment.hasOverdue ? 'text-red-400' : payment.isUpcoming || payment.isDueToday ? 'text-amber-400' : 'text-emerald-400') : 'text-white'}`}>
                                                                             {formatCurrency(payment.totalDebt)}
                                                                         </span>
                                                                         {(payment.totalInterest || 0) > 0 && payment.status !== 'paid' && (
@@ -972,6 +1104,17 @@ const StudentList: React.FC<StudentListProps> = ({
                                                     <div>
                                                         <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">Mensalidade (R$)</label>
                                                         <input type="number" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: Number(e.target.value) })} />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 col-span-1 md:col-span-2">
+                                                        <div>
+                                                            <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">Responsável (Opcional)</label>
+                                                            <input type="text" placeholder="Ex: Maria Souza" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm" value={formData.guardian_name || ''} onChange={(e) => setFormData({ ...formData, guardian_name: e.target.value })} />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">WhatsApp (DDD + Número)</label>
+                                                            <input type="text" placeholder="68999999999" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm font-mono" value={formData.phone || ''} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                                                        </div>
                                                     </div>
 
                                                     {modalMode === 'add' ? (
