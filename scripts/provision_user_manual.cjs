@@ -24,7 +24,7 @@ if (!serviceRoleKey || serviceRoleKey.includes('COLE_AQUI')) {
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function provisionUser() {
-    const email = 'thiago@riseup.com.br'; // Email desejado
+    const email = 'malael@riseup.com'; // Email desejado
     const password = '102030';     // Senha desejada
     const school_id = '5da234ef-a9bc-4b5e-b51f-0e256da582c1'; // ID da escola (Rise UP)
 

@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, AlertTriangle, CheckCircle, Clock, LogOut, BookOpen, Plus, X, Rocket, Sparkles, Bell, Calendar,
-  LayoutDashboard, GraduationCap, Banknote, Database, Menu, ChevronLeft, Settings, Save, RefreshCw
+  LayoutDashboard, GraduationCap, Banknote, Database, Menu, ChevronLeft, Settings, Save, RefreshCw,
+  Mail, Shield, User, Activity, ArrowRight, Lock, Unlock
 } from 'lucide-react';
 import officialLogo from '../LogotipoRiseUpOficial.png';
 import { formatCurrency, formatDate, getLocalDateString, calculatePaymentDetails, getPaymentStatus, getDaysDifference } from '../utils/finance';
@@ -32,6 +33,7 @@ interface DashboardProps {
   onAddClass: (cls: Partial<Class>) => void;
   onEditClass: (cls: Class) => void;
   onDeleteClass: (id: string) => void;
+  userEmail: string; // NEW PROP
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -50,7 +52,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   onLogout,
   onAddClass,
   onEditClass,
-  onDeleteClass
+  onDeleteClass,
+  userEmail // NEW PROP
 }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default OPEN
@@ -63,9 +66,22 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [newClass, setNewClass] = useState({ name: '', teacher: '', schedule: '', room: '', color: 'bg-blue-600' });
 
-  // Password Change State
+  // Settings / Account State
+  const [settingsCategory, setSettingsCategory] = useState<'general' | 'security' | 'advanced'>('general');
+  const [newEmail, setNewEmail] = useState(userEmail || school?.owner_email || ''); // Sync with logged user
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  // BODY SCROLL LOCK Logic (Designer trick to avoid double scrolls)
+  React.useEffect(() => {
+    if (isSettingsOpen || isClassModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isSettingsOpen, isClassModalOpen]);
 
   // Stats Calculations
   const totalStudents = students.length;
@@ -121,6 +137,42 @@ const Dashboard: React.FC<DashboardProps> = ({
       showAlert("Erro ao atualizar senha", error.message, "error");
     } finally {
       setIsUpdatingPassword(false);
+    }
+  };
+
+  const handleUpdateEmail = async () => {
+    if (!newEmail || !newEmail.includes('@')) {
+      const { showAlert } = await import('../utils/alerts');
+      showAlert("Erro", "Por favor, insira um email válido.", "error");
+      return;
+    }
+
+    setIsUpdatingEmail(true);
+    try {
+      // 1. Update in Auth
+      const { error: authError } = await supabase.auth.updateUser({ email: newEmail });
+      if (authError) throw authError;
+
+      // 2. Update in Schools (tracking)
+      if (school) {
+        const { error: schoolError } = await supabase
+          .from('schools')
+          .update({ owner_email: newEmail })
+          .eq('id', school.id);
+        if (schoolError) throw schoolError;
+      }
+
+      const { showToast, showAlert: showFinalAlert } = await import('../utils/alerts');
+      showToast("Email atualizado com sucesso!", "success");
+      showFinalAlert("Confirmação Enviada", `Enviamos links de confirmação para ${school?.owner_email} e ${newEmail}. Você precisa clicar em AMBOS para concluir a troca.`, "info");
+
+      if (school) onUpdateSchool({ ...school, owner_email: newEmail });
+      setIsSettingsOpen(false);
+    } catch (error: any) {
+      const { showAlert } = await import('../utils/alerts');
+      showAlert("Erro ao atualizar email", error.message, "error");
+    } finally {
+      setIsUpdatingEmail(false);
     }
   };
 
@@ -525,56 +577,228 @@ const Dashboard: React.FC<DashboardProps> = ({
         )}
 
         {isSettingsOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <motion.div initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 30 }} className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-slate-700 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-emerald-500"></div>
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Ajustes</h3>
-                <button onClick={() => setIsSettingsOpen(false)} className="p-2 bg-slate-800 rounded-full text-slate-400"><X /></button>
-              </div>
-              <div className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest block mb-1">Juros ao Dia (%)</label>
-                  <input type="number" step="0.001" className="w-full bg-slate-800 border border-slate-700 p-5 rounded-2xl text-white font-mono text-xl outline-none" value={newInterestRate} onChange={e => setNewInterestRate(Number(e.target.value))} />
-                </div>
-                <button onClick={handleUpdateInterestRate} className="w-full py-5 bg-emerald-600 text-white font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-emerald-900/20 hover:bg-emerald-500 transition-all flex items-center justify-center gap-2"><Save className="w-5 h-5" /> Atualizar Taxa</button>
-
-                <div className="pt-4 border-t border-slate-700/50 mt-4">
-                  <p className="text-[9px] text-slate-500 font-bold uppercase mb-3">Manutenção de Dados (Senior)</p>
-                  <button
-                    onClick={handleSyncSpecialFees}
-                    className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl border border-slate-700 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider mb-4"
-                  >
-                    <RefreshCw className="w-4 h-4" /> Corrigir Valores Especiais
-                  </button>
-
-                  <h4 className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-3">Segurança da Conta</h4>
-                  <div className="space-y-3">
-                    <label className="text-xs text-slate-500 block">Nova Senha de Acesso</label>
-                    <div className="flex flex-col gap-2">
-                      <input
-                        type="password"
-                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
-                        placeholder="••••••••"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                      />
-                      <button
-                        onClick={handleUpdatePassword}
-                        disabled={isUpdatingPassword || !newPassword}
-                        className="w-full py-3 bg-indigo-600 hover:bg-emerald-600 text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {isUpdatingPassword ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-                        <span>Atualizar Senha</span>
-                      </button>
-                    </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl p-0 md:p-6 lg:p-10"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#0f172a] w-full h-full md:h-auto md:max-h-[85vh] md:max-w-6xl md:rounded-[2.5rem] border-0 md:border md:border-slate-800 shadow-2xl relative overflow-hidden flex flex-col md:flex-row"
+            >
+              {/* --- MODAL NAVIGATION --- */}
+              {/* Desktop/Tablet Sidebar */}
+              <div className="hidden md:flex w-80 bg-slate-900/50 border-r border-slate-800/50 p-8 flex-col shrink-0">
+                <div className="flex items-center gap-4 mb-12">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 flex items-center justify-center border border-indigo-500/30">
+                    <Settings className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tighter">Ajustes</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Configurações</p>
                   </div>
                 </div>
 
-                <div className="pt-6">
-                  <button onClick={() => setIsSettingsOpen(false)} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors">
-                    Fechar Painel
-                  </button>
+                <nav className="space-y-2 flex-1">
+                  {[
+                    { id: 'general', label: 'Dados Escolares', icon: GraduationCap, color: 'text-indigo-400' },
+                    { id: 'security', label: 'Segurança', icon: Shield, color: 'text-emerald-400' },
+                    { id: 'advanced', label: 'Avançado', icon: Activity, color: 'text-amber-400' }
+                  ].map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSettingsCategory(cat.id as any)}
+                      className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${settingsCategory === cat.id
+                        ? 'bg-slate-800 text-white shadow-lg'
+                        : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/30'
+                        }`}
+                    >
+                      <cat.icon className={`w-5 h-5 ${settingsCategory === cat.id ? cat.color : ''}`} />
+                      <span className="text-sm font-bold uppercase tracking-tight">{cat.label}</span>
+                      {settingsCategory === cat.id && <ArrowRight className="w-4 h-4 ml-auto opacity-50" />}
+                    </button>
+                  ))}
+                </nav>
+
+                <button
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="mt-8 p-4 bg-slate-800 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-2xl font-black uppercase text-xs tracking-widest transition-all text-center flex items-center justify-center gap-2"
+                >
+                  <X className="w-4 h-4" /> Fechar
+                </button>
+              </div>
+
+              {/* Mobile/Small Tablet Top Navigation */}
+              <div className="md:hidden flex flex-col pt-6 px-6 shrink-0 bg-slate-900/50 border-b border-slate-800">
+                <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-3">
+                    <Settings className="w-5 h-5 text-indigo-400" />
+                    <h3 className="text-lg font-black text-white uppercase tracking-tighter">Ajustes</h3>
+                  </div>
+                  <button onClick={() => setIsSettingsOpen(false)} className="p-2 bg-slate-800 rounded-lg text-slate-400"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 pb-4">
+                  {[
+                    { id: 'general', label: 'Escola', icon: GraduationCap },
+                    { id: 'security', label: 'Segurança', icon: Shield },
+                    { id: 'advanced', label: 'Mais', icon: Activity }
+                  ].map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSettingsCategory(cat.id as any)}
+                      className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl transition-all border ${settingsCategory === cat.id
+                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg'
+                          : 'bg-slate-800/50 border-slate-700 text-slate-500'
+                        }`}
+                    >
+                      <cat.icon className="w-4 h-4" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">{cat.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* --- MODAL CONTENT --- */}
+              <div className="flex-1 flex flex-col h-full bg-[#0f172a]/20">
+                <div className="hidden md:flex p-8 border-b border-slate-800/30 justify-between items-center bg-slate-900/10 shrink-0">
+                  <h4 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">
+                    {settingsCategory === 'general' && 'Informações da Unidade'}
+                    {settingsCategory === 'security' && 'Privacidade e Acesso'}
+                    {settingsCategory === 'advanced' && 'Ferramentas do Sistema'}
+                  </h4>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-600 font-bold uppercase tracking-widest bg-slate-800/20 px-4 py-1.5 rounded-full border border-slate-700/50">
+                    ID: {school?.id.split('-')[0]}...
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 md:p-12 custom-scrollbar">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={settingsCategory}
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      className="space-y-10 max-w-2xl"
+                    >
+                      {/* --- CATEGORIA: GERAL --- */}
+                      {settingsCategory === 'general' && (
+                        <>
+                          <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center"><Mail className="w-4 h-4 text-indigo-400" /></div>
+                              <h5 className="font-bold text-white text-lg tracking-tight">Email de Contato Admin</h5>
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed max-w-md">O email é usado para notificações críticas e recuperação de conta. Ao alterar, ambos emails receberão um link de confirmação.</p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Endereço de Email</label>
+                                <input
+                                  type="email"
+                                  className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-indigo-600 transition-all border-indigo-500/30"
+                                  value={newEmail}
+                                  onChange={e => setNewEmail(e.target.value)}
+                                  placeholder="admin@escola.com"
+                                />
+                              </div>
+                              <button
+                                onClick={handleUpdateEmail}
+                                disabled={isUpdatingEmail || !newEmail || newEmail === school?.owner_email}
+                                className="h-14 bg-indigo-600 hover:bg-emerald-600 text-white font-black uppercase text-[10px] tracking-[0.2em] rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 px-6 disabled:opacity-30"
+                              >
+                                {isUpdatingEmail ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                                Salvar Email
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* --- CATEGORIA: SEGURANÇA --- */}
+                      {settingsCategory === 'security' && (
+                        <div className="space-y-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Lock className="w-4 h-4 text-emerald-400" /></div>
+                            <h5 className="font-bold text-white text-lg tracking-tight">Alterar Senha Master</h5>
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed max-w-md">Sua senha deve ter pelo menos 6 caracteres. Recomendamos usar símbolos e números para maior proteção.</p>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Nova Senha</label>
+                              <input
+                                type="password"
+                                className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all font-mono"
+                                value={newPassword}
+                                onChange={e => setNewPassword(e.target.value)}
+                                placeholder="••••••••"
+                              />
+                            </div>
+                            <button
+                              onClick={handleUpdatePassword}
+                              disabled={isUpdatingPassword || !newPassword}
+                              className="h-14 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[10px] tracking-[0.2em] rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 px-6 disabled:opacity-30"
+                            >
+                              {isUpdatingPassword ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                              Atualizar Senha
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* --- CATEGORIA: AVANÇADO --- */}
+                      {settingsCategory === 'advanced' && (
+                        <div className="space-y-10">
+                          <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"><Banknote className="w-4 h-4 text-amber-400" /></div>
+                              <h5 className="font-bold text-white text-lg tracking-tight">Taxas Financeiras</h5>
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed max-w-md">Defina a taxa de juros aplicada automaticamente sobre pagamentos em atraso. Este valor afeta os cálculos do financeiro.</p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Juros ao Dia (%)</label>
+                                <input
+                                  type="number"
+                                  step="0.001"
+                                  className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-amber-500/30 transition-all font-mono text-xl"
+                                  value={newInterestRate}
+                                  onChange={e => setNewInterestRate(Number(e.target.value))}
+                                />
+                              </div>
+                              <button
+                                onClick={handleUpdateInterestRate}
+                                className="h-14 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-900/30 font-black uppercase text-[10px] tracking-[0.2em] rounded-2xl transition-all flex items-center justify-center gap-2 px-6"
+                              >
+                                <Save className="w-4 h-4" /> Atualizar Taxa
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4 pt-8 border-t border-slate-800/50">
+                            <div className="flex items-center gap-3 mb-2">
+                              <RefreshCw className="w-4 h-4 text-slate-500" />
+                              <h5 className="font-bold text-slate-400 text-xs uppercase tracking-widest">Manutenção (Senior)</h5>
+                            </div>
+                            <button
+                              onClick={handleSyncSpecialFees}
+                              className="w-full flex items-center justify-between p-5 bg-slate-900/40 hover:bg-slate-900 border border-slate-800 rounded-2xl transition-all group"
+                            >
+                              <div className="text-left">
+                                <p className="text-sm font-bold text-slate-200">Corrigir Valores Especiais</p>
+                                <p className="text-[10px] text-slate-500 uppercase tracking-tight">Sincroniza pagamentos com taxas de juros alteradas</p>
+                              </div>
+                              <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-indigo-400 transition-colors" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
               </div>
             </motion.div>

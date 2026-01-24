@@ -11,6 +11,7 @@ import { showToast, showAlert, showConfirm } from './utils/alerts';
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('school_admin');
+  const [userEmail, setUserEmail] = useState(''); // NEW
   const [isLoading, setIsLoading] = useState(true);
 
   // School Status State (The "Gatekeeper")
@@ -132,7 +133,7 @@ const App: React.FC = () => {
       // 1. Buscar perfil existente
       let { data: userData, error } = await supabase
         .from('users')
-        .select('role, school_id')
+        .select('role, school_id, email')
         .eq('id', userId)
         .single();
 
@@ -231,6 +232,7 @@ const App: React.FC = () => {
       // 4. Define Estados
       if (userData) {
         setUserRole(userData.role as UserRole);
+        setUserEmail(userEmail || (userData as any).email || ''); // Preference to current login
         setSchoolId(userData.school_id);
 
         // Gatekeeper Logic (Proteção Sênior)
@@ -678,6 +680,7 @@ const App: React.FC = () => {
         onAddClass={handleAddClass}
         onEditClass={handleEditClass}
         onDeleteClass={handleDeleteClass}
+        userEmail={userEmail} // PASS EMAIL
       />
     </div>
   );
