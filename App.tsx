@@ -31,7 +31,8 @@ const App: React.FC = () => {
 
   // Ref to track blocked status inside closures
   const isSchoolBlockedRef = useRef(false);
-  const isAuthenticatedRef = useRef(false); // <--- NEW: Track auth for closures
+  const isAuthenticatedRef = useRef(false);
+  const initialLoadComplete = useRef(false); // <--- NEW: Track first successful load
 
   useEffect(() => {
     // 1. WATCHDOG (Anti-Loop): Se o loading demorar mais de 8s, reseta tudo.
@@ -86,7 +87,10 @@ const App: React.FC = () => {
       if (event === 'SIGNED_IN' && session) {
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
-        await handleUserProfile(session.user.id, session.user.email, true);
+
+        // SÊNIOR: Só mostra loading global se for a PRIMEIRA vez ou se não temos dados básicos
+        const showGlobalLoading = !initialLoadComplete.current;
+        await handleUserProfile(session.user.id, session.user.email, showGlobalLoading);
       } else if (event === 'SIGNED_OUT') {
         console.log("SIGNED_OUT event detected. Cleaning up...");
         setIsAuthenticated(false);
@@ -105,6 +109,7 @@ const App: React.FC = () => {
         setSchoolId(null);
         setSchool(null);
         setUserRole('school_admin');
+        initialLoadComplete.current = false; // Reset on logout
         setIsLoading(false);
       }
     });
@@ -267,6 +272,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
       fetchingProfileRef.current = false;
+      initialLoadComplete.current = true; // Mark as done at least once
     }
   };
 
