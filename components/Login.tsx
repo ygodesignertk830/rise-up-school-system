@@ -64,78 +64,54 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0B1120] text-white font-outfit">
-      {/* Lado Esquerdo - Animação Espacial */}
-      <div className="w-full lg:w-1/2 min-h-[25vh] lg:min-h-screen relative flex items-center justify-center bg-gradient-to-br from-[#1a1b4b] via-[#2e1065] to-[#0B1120] overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden">
-          {[...Array(20)].map((_, i) => (
-            <motion.div
-              key={i}
-              className="absolute bg-white rounded-full opacity-20"
-              initial={{
-                x: Math.random() * window.innerWidth / 2,
-                y: Math.random() * window.innerHeight,
-                scale: Math.random() * 0.5 + 0.5
-              }}
-              animate={{
-                y: [null, Math.random() * -100],
-                opacity: [0.2, 0.5, 0.2]
-              }}
-              transition={{
-                duration: Math.random() * 5 + 3,
-                repeat: Infinity,
-                ease: "linear"
-              }}
-              style={{ width: Math.random() * 4 + 1, height: Math.random() * 4 + 1 }}
-            />
-          ))}
-        </div>
-
+    <div className="h-screen w-full flex flex-col lg:flex-row bg-[#0B1120] text-white font-outfit overflow-hidden">
+      {/* Lado Esquerdo - Branding */}
+      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center bg-[#0f172a] relative p-8 order-last lg:order-first lg:h-full">
         <div className="relative z-10 text-center flex flex-col items-center">
           <motion.div
-            animate={{ y: [0, -15, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            className="mb-8"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8 }}
+            className="mb-4 lg:mb-8"
           >
             {/* Logotipo Oficial */}
-            <div className="w-14 h-14 md:w-64 md:h-64 rounded-full flex items-center justify-center relative z-10 transition-all duration-500">
+            <div className="w-32 h-32 md:w-64 md:h-64 rounded-full flex items-center justify-center relative z-10 transition-all duration-500">
               <img
                 src={officialLogo}
                 alt="Rise Up Logo"
-                className="w-full h-full object-contain drop-shadow-[0_0_35px_rgba(255,255,255,0.3)]"
-                onError={(e) => {
-                  // Fallback apenas se falhar
-                  e.currentTarget.style.display = 'none';
-                }}
+                className="w-full h-full object-contain drop-shadow-[0_0_25px_rgba(255,255,255,0.15)]"
               />
             </div>
           </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 font-outfit"
-          >
-            Rise UP
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.7 }}
-            className="text-xl text-gray-300 mt-4 tracking-wide font-light"
-          >
-            English School
-          </motion.p>
+
+          <div className="hidden lg:block">
+            <motion.h1
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="text-4xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 font-outfit"
+            >
+              Rise UP
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+              className="text-xl text-gray-300 mt-2 tracking-wide font-light"
+            >
+              English School
+            </motion.p>
+          </div>
         </div>
       </div>
 
       {/* Lado Direito - Formulário */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-[#0B1120] flex-1">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-[#0B1120] lg:h-full">
         <motion.div
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="w-full max-w-md space-y-8"
+          className="w-full max-w-md space-y-6 lg:space-y-8"
         >
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-white mb-2">

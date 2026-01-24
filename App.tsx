@@ -100,14 +100,17 @@ const App: React.FC = () => {
         setPayments([]);
         setClasses([]);
 
-        setSchoolId(null);
         setIsSchoolBlocked(false);
         setSubscriptionDueDate(null);
         setSchoolName('');
         isSchoolBlockedRef.current = false;
-
         fetchingProfileRef.current = false;
-        setIsLoading(false); // Garante que loading some
+
+        // Garante que o usuário volte para o Login
+        setIsLoading(false);
+        setSchoolId(null);
+        setSchool(null);
+        setUserRole('school_admin');
       }
     });
 
@@ -339,14 +342,12 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      setIsLoading(true); // Feedback imediato
+      setIsLoading(true);
       await supabase.auth.signOut();
+      // O listener onAuthStateChange agora lidará com o reset de estado.
     } catch (error) {
       console.error("Erro ao sair:", error);
-    } finally {
-      // Forçar recarregamento para limpar totalmente o estado e cache
-      // Isso evita o 'travamento' que exige F5 manual
-      window.location.href = '/';
+      setIsLoading(false);
     }
   };
 

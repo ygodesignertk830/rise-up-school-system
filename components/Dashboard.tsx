@@ -650,8 +650,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                       key={cat.id}
                       onClick={() => setSettingsCategory(cat.id as any)}
                       className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl transition-all border ${settingsCategory === cat.id
-                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg'
-                          : 'bg-slate-800/50 border-slate-700 text-slate-500'
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg'
+                        : 'bg-slate-800/50 border-slate-700 text-slate-500'
                         }`}
                     >
                       <cat.icon className="w-4 h-4" />
