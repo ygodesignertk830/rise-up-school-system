@@ -64,9 +64,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-[#0B1120] text-white overflow-hidden font-outfit">
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0B1120] text-white overflow-x-hidden font-outfit">
       {/* Lado Esquerdo - Animação Espacial */}
-      <div className="hidden lg:flex w-1/2 relative items-center justify-center bg-gradient-to-br from-[#1a1b4b] via-[#2e1065] to-[#0B1120]">
+      <div className="w-full lg:w-1/2 min-h-[40vh] lg:min-h-screen relative flex items-center justify-center bg-gradient-to-br from-[#1a1b4b] via-[#2e1065] to-[#0B1120] overflow-hidden">
         <div className="absolute inset-0 overflow-hidden">
           {[...Array(20)].map((_, i) => (
             <motion.div
@@ -130,7 +130,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       </div>
 
       {/* Lado Direito - Formulário */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#0B1120]">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#0B1120] min-h-[60vh] lg:min-h-screen">
         <motion.div
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
