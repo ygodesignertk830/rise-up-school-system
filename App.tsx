@@ -61,11 +61,12 @@ const App: React.FC = () => {
         if (session) {
           setIsAuthenticated(true);
           isAuthenticatedRef.current = true;
-          // Tenta carregar perfil, mas garante que loading para se falhar
+          // Tenta carregar perfil
           await handleUserProfile(session.user.id, session.user.email, true);
         } else {
           // Sem sessão = Não carrega nada, vai pro login
           setIsLoading(false);
+          isAuthenticatedRef.current = false;
         }
       } catch (err) {
         console.error("Exceção Crítica:", err);
@@ -83,14 +84,9 @@ const App: React.FC = () => {
       if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
 
       if (event === 'SIGNED_IN' && session) {
-        const isFreshLogin = !isAuthenticatedRef.current;
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
-
-        // Só carrega perfil se for login novo ou se ainda não tivermos userRole
-        if (isFreshLogin || !fetchData) {
-          await handleUserProfile(session.user.id, session.user.email, isFreshLogin);
-        }
+        await handleUserProfile(session.user.id, session.user.email, true);
       } else if (event === 'SIGNED_OUT') {
         console.log("SIGNED_OUT event detected. Cleaning up...");
         setIsAuthenticated(false);
@@ -122,14 +118,12 @@ const App: React.FC = () => {
   // Lógica crítica: Verifica perfil, cria se não existir (Auto-Provisioning)
   // FIX: Adicionando parametro opcional para controlar o Loading e evitar loop visual
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
+    // PROTEÇÃO SÊNIOR: Se já estamos buscando ou se já terminou com sucesso, não repete.
+    // Mas resetamos o ref no SIGNED_OUT para permitir novo login.
     if (fetchingProfileRef.current) return;
     fetchingProfileRef.current = true;
 
-    // Só exibe o loading se explicitamente solicitado (ex: login inicial)
-    // Se for um refresh de aba (showLoading=false), mantém a UI quieta.
-    if (showLoading) {
-      setIsLoading(true);
-    }
+    if (showLoading) setIsLoading(true);
 
     try {
       // 1. Buscar perfil existente
@@ -259,7 +253,7 @@ const App: React.FC = () => {
               // Do not return here, let finally block handle loading state
             } else {
               // Se tudo ok, busca dados
-              await fetchData(userData.school_id);
+              await fetchData(userData.school_id, userId);
             }
           }
         } else if (userData.role === 'school_admin' && !userData.school_id) {
@@ -294,7 +288,7 @@ const App: React.FC = () => {
 
 
   // fetchData pode receber um flag 'isSilent' para não bloquear a UI
-  const fetchData = async (currentSchoolId: string | null) => {
+  const fetchData = async (currentSchoolId: string | null, userId?: string) => {
     if (!currentSchoolId) return;
 
     try {
@@ -308,12 +302,10 @@ const App: React.FC = () => {
           console.log("Auto-Repair: Dados encontrados em outra escola. Trocando contexto...");
           // Atualiza o estado local e o usuário para a escola correta
           setSchoolId(anyClass.school_id);
-          if (isAuthenticated) {
-            await supabase.from('users').update({ school_id: anyClass.school_id }).eq('id', (await supabase.auth.getUser()).data.user?.id);
-            showToast("Contexto atualizado para escola com dados!", "info");
+          if (isAuthenticated && userId) {
+            await supabase.from('users').update({ school_id: anyClass.school_id }).eq('id', userId);
           }
-          // Relança o fetch com o novo ID
-          return fetchData(anyClass.school_id);
+          return fetchData(anyClass.school_id, userId);
         }
       }
 
