@@ -47,6 +47,7 @@ export interface Student {
   photo_url?: string;
   phone?: string;
   guardian_name?: string;
+  birth_date?: string;
   status: StudentStatus;
   // Computed for UI convenience
   className?: string;

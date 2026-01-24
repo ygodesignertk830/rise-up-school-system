@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, X, Upload, Camera, Edit2, Eye, Rocket, CheckCircle, AlertTriangle, ShieldCheck, Trash2, Calendar, RotateCcw, CalendarDays, ArrowRight, Sparkles, FileText, Users, Clock } from 'lucide-react';
+import { Search, Plus, X, Upload, Camera, Edit2, Eye, Rocket, CheckCircle, AlertTriangle, ShieldCheck, Trash2, Calendar, RotateCcw, CalendarDays, ArrowRight, Sparkles, FileText, Users, Clock, Phone } from 'lucide-react';
 import { Student, Class, Payment } from '../types';
 import { formatCurrency, formatDate, getLocalDateString, calculatePaymentDetails, getPaymentStatus, getDaysDifference, calculateNextMonthSameDay, STUDENT_POLICIES, getUPComingAlert } from '../utils/finance';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -50,7 +50,8 @@ const StudentList: React.FC<StudentListProps> = ({
         monthly_fee: 150,
         status: 'active',
         photo_url: undefined,
-        enrollment_date: ''
+        enrollment_date: '',
+        birth_date: ''
     });
 
     const [initialPaymentDate, setInitialPaymentDate] = useState<string>('');
@@ -95,6 +96,7 @@ const StudentList: React.FC<StudentListProps> = ({
             photo_url: undefined,
             phone: '',
             guardian_name: '',
+            birth_date: '',
             enrollment_date: today,
             payment_due_day: parseInt(today.split('-')[2])
         });
@@ -173,7 +175,8 @@ const StudentList: React.FC<StudentListProps> = ({
             status: formData.status as 'active' | 'inactive',
             photo_url: formData.photo_url,
             phone: formData.phone,
-            guardian_name: formData.guardian_name
+            guardian_name: formData.guardian_name,
+            birth_date: formData.birth_date
         };
 
         if (modalMode === 'add') {
@@ -582,7 +585,7 @@ const StudentList: React.FC<StudentListProps> = ({
                                         <div className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-[#0b1120] ${student.status === 'active' ? 'bg-emerald-500' : 'bg-slate-500'}`}></div>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="text-base font-bold text-white truncate">{student.name}</h3>
+                                        <h3 className="text-base font-bold text-white break-words">{student.name}</h3>
                                         <div className="flex items-center gap-2 mt-0.5">
                                             <span className="text-[10px] text-blue-300 font-bold bg-blue-900/30 px-2 py-0.5 rounded border border-blue-800/50 uppercase tracking-tighter">{student.className}</span>
                                         </div>
@@ -791,10 +794,12 @@ const StudentList: React.FC<StudentListProps> = ({
                                                         )}
                                                     </motion.div>
 
-                                                    <div className="flex-1 w-full text-center md:text-left z-10">
+                                                    <div className="flex-1 w-full text-center md:text-left z-10 min-w-0">
                                                         <div className="flex flex-col md:flex-row justify-between items-center md:items-start mb-6 gap-4">
-                                                            <div className="w-full">
-                                                                <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-2 drop-shadow-md">{formData.name}</h2>
+                                                            <div className="w-full min-w-0 flex-1">
+                                                                <h2 className="text-2xl md:text-4xl font-black text-white tracking-tight mb-2 drop-shadow-md break-words whitespace-normal leading-tight">
+                                                                    {formData.name}
+                                                                </h2>
                                                                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
                                                                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold text-[10px] uppercase tracking-wider">
                                                                         <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></div>
@@ -948,6 +953,54 @@ const StudentList: React.FC<StudentListProps> = ({
                                                                 <p className="text-sm lg:text-base font-semibold text-white">
                                                                     {formatDate(formData.enrollment_date || '')}
                                                                 </p>
+                                                            </motion.div>
+                                                        </div>
+
+                                                        {/* --- DADOS PESSOAIS E CONTATO --- */}
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mt-6">
+                                                            <motion.div
+                                                                whileHover={{ scale: 1.02 }}
+                                                                className="p-4 bg-slate-900/40 rounded-xl border border-slate-700/30 flex items-start gap-4 shadow-md group hover:border-purple-500/30 transition-all"
+                                                            >
+                                                                <div className="p-3 bg-purple-500/10 rounded-lg group-hover:scale-110 transition-transform flex-shrink-0 mt-1">
+                                                                    <Users className="w-5 h-5 text-purple-400" />
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0 break-words w-full">
+                                                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">Responsável</p>
+                                                                    <p className="text-sm font-bold text-slate-200 leading-relaxed">
+                                                                        {formData.guardian_name || 'Não informado'}
+                                                                    </p>
+                                                                </div>
+                                                            </motion.div>
+
+                                                            <motion.div
+                                                                whileHover={{ scale: 1.02 }}
+                                                                className="p-4 bg-slate-900/40 rounded-xl border border-slate-700/30 flex items-start gap-4 shadow-md group hover:border-emerald-500/30 transition-all"
+                                                            >
+                                                                <div className="p-3 bg-emerald-500/10 rounded-lg group-hover:scale-110 transition-transform flex-shrink-0 mt-1">
+                                                                    <Phone className="w-5 h-5 text-emerald-400" />
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0 break-words w-full">
+                                                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">WhatsApp</p>
+                                                                    <p className="text-sm font-bold text-slate-200 font-mono leading-relaxed">
+                                                                        {formData.phone || 'Não informado'}
+                                                                    </p>
+                                                                </div>
+                                                            </motion.div>
+
+                                                            <motion.div
+                                                                whileHover={{ scale: 1.02 }}
+                                                                className="p-4 bg-slate-900/40 rounded-xl border border-slate-700/30 flex items-start gap-4 shadow-md group hover:border-blue-500/30 transition-all"
+                                                            >
+                                                                <div className="p-3 bg-blue-500/10 rounded-lg group-hover:scale-110 transition-transform flex-shrink-0 mt-1">
+                                                                    <CalendarDays className="w-5 h-5 text-blue-400" />
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0 break-words w-full">
+                                                                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">Nascimento</p>
+                                                                    <p className="text-sm font-bold text-slate-200 leading-relaxed">
+                                                                        {formData.birth_date ? formatDate(formData.birth_date) : 'Não informado'}
+                                                                    </p>
+                                                                </div>
                                                             </motion.div>
                                                         </div>
                                                     </div>
@@ -1106,7 +1159,7 @@ const StudentList: React.FC<StudentListProps> = ({
                                                         <input type="number" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: Number(e.target.value) })} />
                                                     </div>
 
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 col-span-1 md:col-span-2">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 col-span-1 md:col-span-2">
                                                         <div>
                                                             <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">Responsável (Opcional)</label>
                                                             <input type="text" placeholder="Ex: Maria Souza" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm" value={formData.guardian_name || ''} onChange={(e) => setFormData({ ...formData, guardian_name: e.target.value })} />
@@ -1114,6 +1167,10 @@ const StudentList: React.FC<StudentListProps> = ({
                                                         <div>
                                                             <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">WhatsApp (DDD + Número)</label>
                                                             <input type="text" placeholder="68999999999" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm font-mono" value={formData.phone || ''} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">Data de Nascimento</label>
+                                                            <input type="date" className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm" value={formData.birth_date || ''} onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })} />
                                                         </div>
                                                     </div>
 

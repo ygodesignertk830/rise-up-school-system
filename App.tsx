@@ -413,7 +413,8 @@ const App: React.FC = () => {
         status: studentData.status,
         photo_url: studentData.photo_url,
         phone: studentData.phone,
-        guardian_name: studentData.guardian_name
+        guardian_name: studentData.guardian_name,
+        birth_date: studentData.birth_date
       }]).select().single();
 
       if (studentError) {
@@ -450,7 +451,7 @@ const App: React.FC = () => {
   };
 
   const handleEditStudent = async (updatedStudent: Student, specificNextDueDate?: string) => {
-    console.log("📝 Editando aluno:", updatedStudent);
+    console.log("📝 Enviando UPDATE para Supabase:", updatedStudent);
     try {
       const { error } = await supabase.from('students').update({
         name: updatedStudent.name,
@@ -461,7 +462,8 @@ const App: React.FC = () => {
         status: updatedStudent.status,
         photo_url: updatedStudent.photo_url,
         phone: updatedStudent.phone,
-        guardian_name: updatedStudent.guardian_name
+        guardian_name: updatedStudent.guardian_name,
+        birth_date: updatedStudent.birth_date
       }).eq('id', updatedStudent.id);
 
       if (error) {
