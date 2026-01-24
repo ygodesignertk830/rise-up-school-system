@@ -96,8 +96,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   return (
     <div className="h-[100dvh] w-screen relative bg-[#020617] text-white font-outfit overflow-hidden flex flex-col items-center justify-center p-4">
 
-      {/* --- ELITE SPACE ENGINE (Blue Nebula) --- */}
-      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+      {/* --- ELITE SPACE ENGINE (Blue Nebula) - RESTRICTED TO DESKTOP FOR PERFORMANCE --- */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden hidden lg:block">
         {/* Luminous Blue/Indigo Nebula */}
         <motion.div
           animate={{ opacity: [0.3, 0.5, 0.3], scale: [1, 1.2, 1] }}
