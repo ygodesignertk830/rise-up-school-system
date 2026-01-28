@@ -120,14 +120,14 @@ const App: React.FC = () => {
   }, []);
 
   // Lógica crítica: Verifica perfil, cria se não existir (Auto-Provisioning)
-  // FIX: Adicionando parametro opcional para controlar o Loading e evitar loop visual
-  // Lógica crítica: Verifica perfil, cria se não existir (Auto-Provisioning)
-  // FIX: Refatorado para entrada IMEDIATA no sistema. 
-  // O carregamento de dados pesados (escola/alunos) agora é 100% background.
+  // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
+  // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
     // Se já estamos buscando ou se já terminou com sucesso, não repete.
     if (fetchingProfileRef.current) return;
     fetchingProfileRef.current = true;
+
+    let resolvedSchoolId: string | null = null;
 
     if (showLoading) setIsLoading(true);
 
@@ -183,6 +183,7 @@ const App: React.FC = () => {
 
       // 4. Define Estados Básicos e LIBERA A TELA IMEDIATAMENTE
       if (userData) {
+        resolvedSchoolId = userData.school_id;
         setUserRole(userData.role as UserRole);
         setUserEmail(userEmail || (userData as any).email || '');
         setSchoolId(userData.school_id);
@@ -198,31 +199,24 @@ const App: React.FC = () => {
 
       // 5. Background Data Fetch (Dados Pesados)
       // Executa DEPOIS de liberar a UI para garantir agilidade
-      setTimeout(async () => {
-        // Re-valida usuário atual para garantir consistência
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Busca dados completos da escola e alunos
-        const { data: latestUser } = await supabase.from('users').select('school_id').eq('id', user.id).single();
-
-        if (latestUser && latestUser.school_id) {
-          const { data: schoolData } = await supabase.from('schools').select('*').eq('id', latestUser.school_id).single();
+      // Usa VARIAVEIS LOCAIS para não depender de auth.getUser() novamente (que falha no reload)
+      if (resolvedSchoolId) {
+        setTimeout(async () => {
+          const { data: schoolData } = await supabase.from('schools').select('*').eq('id', resolvedSchoolId).single();
           if (schoolData) {
             setSchool(schoolData);
             setSchoolName(schoolData.name);
             setSubscriptionDueDate(schoolData.subscription_due_date);
 
             const today = getLocalDateString();
-            // Só bloqueia SE realmente estiver vencido E a flag estiver ativa
             if (!schoolData.active || (schoolData.subscription_due_date && schoolData.subscription_due_date < today)) {
               setIsSchoolBlocked(true);
             }
           }
           // Busca alunos/pagamentos/turmas
-          fetchData(latestUser.school_id, user.id);
-        }
-      }, 0); // Next Tick
+          fetchData(resolvedSchoolId, userId);
+        }, 0);
+      }
     }
   };
 
