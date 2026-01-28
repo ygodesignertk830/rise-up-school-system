@@ -123,13 +123,11 @@ const App: React.FC = () => {
   // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
   // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
-    // Se já estamos buscando ou se já terminou com sucesso, não repete.
-    if (fetchingProfileRef.current) return;
-    fetchingProfileRef.current = true;
-
-    let resolvedSchoolId: string | null = null;
+    // REMOVIDO: fetchingProfileRef check para garantir que sempre tente buscar se chamado
 
     if (showLoading) setIsLoading(true);
+
+    let resolvedSchoolId: string | null = null;
 
     try {
       // 1. Buscar perfil básico do usuário (Rápido)
@@ -237,27 +235,16 @@ const App: React.FC = () => {
   }, [isAuthenticated, userRole, isSchoolBlocked, schoolId]);
 
 
-  // fetchData pode receber um flag 'isSilent' para não bloquear a UI
+  // fetchData SIMPLIFICADO: Sem "Auto-Repair" loops
   const fetchData = async (currentSchoolId: string | null, userId?: string) => {
     if (!currentSchoolId) return;
 
     try {
-      let { data: classesData } = await supabase.from('classes').select('*').eq('school_id', currentSchoolId).order('name');
+      console.log(`📡 Fetching data for school: ${currentSchoolId}`);
 
-      // AUTO-REPAIR: Se não achou turmas na escola atual, verifica se existem em outra escola
-      // Isso corrige o caso onde o Seed rodou em uma escola e o usuário está em outra
-      if (!classesData || classesData.length === 0) {
-        const { data: anyClass } = await supabase.from('classes').select('school_id').limit(1).single();
-        if (anyClass && anyClass.school_id !== currentSchoolId) {
-          console.log("Auto-Repair: Dados encontrados em outra escola. Trocando contexto...");
-          // Atualiza o estado local e o usuário para a escola correta
-          setSchoolId(anyClass.school_id);
-          if (isAuthenticated && userId) {
-            await supabase.from('users').update({ school_id: anyClass.school_id }).eq('id', userId);
-          }
-          return fetchData(anyClass.school_id, userId);
-        }
-      }
+      // 1. Turmas
+      let { data: classesData } = await supabase.from('classes').select('*').eq('school_id', currentSchoolId).order('name');
+      setClasses(classesData || []);
 
       setClasses(classesData || []);
 
