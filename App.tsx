@@ -282,16 +282,17 @@ const App: React.FC = () => {
       setIsLoading(true);
       await supabase.auth.signOut();
 
-      // Safety reset (caso o listener SIGNED_OUT demore)
-      setIsAuthenticated(false);
-      setUserRole('school_admin');
-      setSchoolId(null);
-      setSchool(null);
-      setIsLoading(false);
+      // Limpeza agressiva de cache e estado para evitar loops
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Força recarregamento da página para garantir estado limpo
+      window.location.href = '/';
 
     } catch (error) {
       console.error("Erro ao sair:", error);
-      setIsLoading(false);
+      // Fallback se reload falhar (improvável)
+      window.location.reload();
     }
   };
 
