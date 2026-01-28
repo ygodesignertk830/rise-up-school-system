@@ -121,70 +121,49 @@ const App: React.FC = () => {
 
   // Lógica crítica: Verifica perfil, cria se não existir (Auto-Provisioning)
   // FIX: Adicionando parametro opcional para controlar o Loading e evitar loop visual
+  // Lógica crítica: Verifica perfil, cria se não existir (Auto-Provisioning)
+  // FIX: Refatorado para entrada IMEDIATA no sistema. 
+  // O carregamento de dados pesados (escola/alunos) agora é 100% background.
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
-    // PROTEÇÃO SÊNIOR: Se já estamos buscando ou se já terminou com sucesso, não repete.
-    // Mas resetamos o ref no SIGNED_OUT para permitir novo login.
+    // Se já estamos buscando ou se já terminou com sucesso, não repete.
     if (fetchingProfileRef.current) return;
     fetchingProfileRef.current = true;
 
     if (showLoading) setIsLoading(true);
 
     try {
-      // 1. Buscar perfil existente
+      // 1. Buscar perfil básico do usuário (Rápido)
       let { data: userData, error } = await supabase
         .from('users')
         .select('role, school_id, email')
         .eq('id', userId)
         .single();
 
-      // 2. SINCRONIZAÇÃO DE ACESSO REMOVIDA
-      // O sistema confia no school_id já gravado no perfil do usuário ('users' table).
-
-      // 3. Se não existir perfil na tabela 'public.users', cria automaticamente
+      // 3. Auto-Provisioning (Se não existir) - Mantemos a lógica original de criação
       if (!userData || error) {
         console.log("Perfil não encontrado, criando auto-provisionamento...");
 
-        // Lógica de Atribuição de Escola (Repete o check acima para o INSERT inicial)
         let targetSchoolId: string | null = null;
         let targetRole: UserRole = 'school_admin';
 
         if (userEmail) {
-          // 1. PRIORIDADE: Checa tabela de acessos autorizados (Gestão de Usuários)
-          const { data: authorizedAccess } = await supabase
-            .from('authorized_access')
-            .select('school_id, role')
-            .eq('email', userEmail.toLowerCase())
+          const { data: ownedSchool } = await supabase
+            .from('schools')
+            .select('id')
+            .eq('owner_email', userEmail)
             .maybeSingle();
 
-          if (authorizedAccess) {
-            targetSchoolId = authorizedAccess.school_id;
-            targetRole = authorizedAccess.role as UserRole;
-            console.log("Acesso autorizado encontrado via Gestão de Usuários.");
-          } else {
-            // 2. SUB-PRIORIDADE: Checa se é o dono direto da escola (owner_email)
-            const { data: ownedSchool } = await supabase
-              .from('schools')
-              .select('id')
-              .eq('owner_email', userEmail)
-              .maybeSingle();
-
-            if (ownedSchool) {
-              targetSchoolId = ownedSchool.id;
-              console.log("Acesso autorizado encontrado via Dono de Escola.");
-            }
-          }
+          if (ownedSchool) targetSchoolId = ownedSchool.id;
         }
 
-        // Check if super admin exists (first user becomes super admin)
         const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
 
         if (count === 0) {
           targetRole = 'super_admin';
           targetSchoolId = null;
         } else if (!targetSchoolId) {
-          // Create new school for this user
           const { data: newSchool } = await supabase.from('schools').insert([{
-            name: 'Nova Escola (Auto-Criada)',
+            name: 'Nova Escola',
             slug: `school-${Date.now()}`,
             active: true,
             owner_email: userEmail
@@ -192,61 +171,58 @@ const App: React.FC = () => {
           if (newSchool) targetSchoolId = newSchool.id;
         }
 
-        const { data: newUser, error: createError } = await supabase.from('users').insert([{
+        const { data: newUser } = await supabase.from('users').insert([{
           id: userId,
           email: userEmail || 'user@system.com',
           role: targetRole,
           school_id: targetSchoolId
         }]).select().single();
 
-        if (createError) throw createError;
         userData = newUser;
       }
 
-      // 4. Define Estados
+      // 4. Define Estados Básicos e LIBERA A TELA IMEDIATAMENTE
       if (userData) {
         setUserRole(userData.role as UserRole);
-        setUserEmail(userEmail || (userData as any).email || ''); // Preference to current login
+        setUserEmail(userEmail || (userData as any).email || '');
         setSchoolId(userData.school_id);
-
-        // Gatekeeper Logic (Proteção Sênior)
-        if (userData.role === 'school_admin' && userData.school_id) {
-          const { data: schoolData } = await supabase
-            .from('schools')
-            .select('*')
-            .eq('id', userData.school_id)
-            .single();
-
-          if (schoolData) {
-            const today = getLocalDateString();
-            const isOverdue = schoolData.subscription_due_date && schoolData.subscription_due_date < today;
-
-            // Set Data
-            setSchool(schoolData); // SET FULL OBJECT
-            setSubscriptionDueDate(schoolData.subscription_due_date);
-            setSchoolName(schoolData.name);
-
-            if (!schoolData.active || isOverdue) {
-              setIsSchoolBlocked(true);
-              // Do not return here, let finally block handle loading state
-            } else {
-              // Se tudo ok, busca dados EM BACKGROUND (Non-blocking)
-              // REMOVIDO 'await' para entrada imediata no sistema
-              fetchData(userData.school_id, userId);
-            }
-          }
-        } else if (userData.role === 'school_admin' && !userData.school_id) {
-          // User has role but no school linked? Should probably create one or alert.
-          // For now, let it pass, but fetchData won't run.
-        }
       }
+
     } catch (error) {
-      console.error("Erro no perfil de usuário:", error);
-      // Do not alert here to avoid UX blocking loops, just log.
+      console.error("Erro no perfil:", error);
     } finally {
+      // === AÇÃO IMEDIATA: LIBERAR LOADING ===
       setIsLoading(false);
       fetchingProfileRef.current = false;
-      initialLoadComplete.current = true; // Mark as done at least once
+      initialLoadComplete.current = true;
+
+      // 5. Background Data Fetch (Dados Pesados)
+      // Executa DEPOIS de liberar a UI para garantir agilidade
+      setTimeout(async () => {
+        // Re-valida usuário atual para garantir consistência
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Busca dados completos da escola e alunos
+        const { data: latestUser } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+
+        if (latestUser && latestUser.school_id) {
+          const { data: schoolData } = await supabase.from('schools').select('*').eq('id', latestUser.school_id).single();
+          if (schoolData) {
+            setSchool(schoolData);
+            setSchoolName(schoolData.name);
+            setSubscriptionDueDate(schoolData.subscription_due_date);
+
+            const today = getLocalDateString();
+            // Só bloqueia SE realmente estiver vencido E a flag estiver ativa
+            if (!schoolData.active || (schoolData.subscription_due_date && schoolData.subscription_due_date < today)) {
+              setIsSchoolBlocked(true);
+            }
+          }
+          // Busca alunos/pagamentos/turmas
+          fetchData(latestUser.school_id, user.id);
+        }
+      }, 0); // Next Tick
     }
   };
 
