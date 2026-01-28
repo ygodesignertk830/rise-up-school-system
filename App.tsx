@@ -187,20 +187,24 @@ const App: React.FC = () => {
         setSchoolId(userData.school_id);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro no perfil:", error);
+      showAlert("Erro de Inicialização", "Falha ao carregar perfil: " + (error.message || "Erro desconhecido"), 'error');
+      // Tentar limpar sessão se for erro grave de auth? Não, melhor deixar usuário tentar logar de novo via UI.
     } finally {
       // === AÇÃO IMEDIATA: LIBERAR LOADING ===
       setIsLoading(false);
       fetchingProfileRef.current = false;
       initialLoadComplete.current = true;
 
-      // 5. Background Data Fetch (Dados Pesados)
-      // Executa DEPOIS de liberar a UI para garantir agilidade
-      // Usa VARIAVEIS LOCAIS para não depender de auth.getUser() novamente (que falha no reload)
+      // 5. Background Data Fetch 
       if (resolvedSchoolId) {
         setTimeout(async () => {
-          const { data: schoolData } = await supabase.from('schools').select('*').eq('id', resolvedSchoolId).single();
+          // A. Busca Dados da Escola 
+          const { data: schoolData, error: schoolError } = await supabase.from('schools').select('*').eq('id', resolvedSchoolId).single();
+
+          if (schoolError) console.error("School metadata error:", schoolError);
+
           if (schoolData) {
             setSchool(schoolData);
             setSchoolName(schoolData.name);
@@ -211,9 +215,13 @@ const App: React.FC = () => {
               setIsSchoolBlocked(true);
             }
           }
-          // Busca alunos/pagamentos/turmas
+
+          // B. Busca Dados Operacionais
           fetchData(resolvedSchoolId, userId);
+
         }, 0);
+      } else {
+        console.warn("DEBUG: School ID missing in background fetch.");
       }
     }
   };
@@ -259,8 +267,9 @@ const App: React.FC = () => {
         setPayments([]);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao buscar dados:', error);
+      showAlert("Conexão Instável", "Falha ao buscar dados (Vercel): " + (error.message || "Verifique sua rede"), 'error');
     }
   };
 
