@@ -48,52 +48,59 @@ const App: React.FC = () => {
       });
     }, 15000);
 
-    // 2. Init Session
+    // 2. Init Session - APENAS DETECTA, NÃO CARREGA
     const initSession = async () => {
       try {
+        console.log("🔍 [INIT] Verificando sessão existente...");
         const { data: { session }, error } = await supabase.auth.getSession();
 
         if (error) {
-          console.error("Erro de Sessão:", error);
+          console.error("❌ [INIT] Erro ao verificar sessão:", error);
           setIsLoading(false);
           return;
         }
 
         if (session) {
-          setIsAuthenticated(true);
-          isAuthenticatedRef.current = true;
-          // Tenta carregar perfil
-          await handleUserProfile(session.user.id, session.user.email, true);
+          console.log("✅ [INIT] Sessão detectada. Aguardando onAuthStateChange carregar dados...");
+          // NÃO CARREGAMOS AQUI! Deixamos o onAuthStateChange fazer isso.
+          // Isso elimina a condição de corrida que causava dados zerados.
         } else {
-          // Sem sessão = Não carrega nada, vai pro login
+          console.log("ℹ️ [INIT] Sem sessão. Mostrando tela de login.");
           setIsLoading(false);
-          isAuthenticatedRef.current = false;
         }
       } catch (err) {
-        console.error("Exceção Crítica:", err);
+        console.error("💥 [INIT] Exceção crítica:", err);
         setIsLoading(false);
       }
     };
 
     initSession();
 
-    // 3. Listener Realtime - SÊNIOR: Centralizamos a limpeza e evitamos loops.
+    // 3. Listener de Autenticação - ÚNICO PONTO DE CARREGAMENTO
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`Auth Event: ${event}`);
+      console.log(`🔔 [AUTH EVENT] ${event}`);
+
+      // Ignorar eventos que não mudam o estado de autenticação
+      if (event === 'TOKEN_REFRESHED') return;
 
       if (event === 'SIGNED_IN' && session) {
-        // Anti-Race: Se já estamos carregando ou já carregamos, evitamos duplicidade no F5
-        if (initialLoadComplete.current) return;
-
+        console.log("✅ [AUTH] SIGNED_IN detectado. Carregando perfil...");
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
         await handleUserProfile(session.user.id, session.user.email, true);
-      } else if (event === 'SIGNED_OUT') {
-        console.log("🔐 SIGNED_OUT: Limpando Cache e Estados...");
+      }
 
+      else if (event === 'INITIAL_SESSION' && session) {
+        console.log("✅ [AUTH] INITIAL_SESSION detectado (F5). Carregando perfil...");
+        setIsAuthenticated(true);
+        isAuthenticatedRef.current = true;
+        await handleUserProfile(session.user.id, session.user.email, true);
+      }
+
+      else if (event === 'SIGNED_OUT') {
+        console.log("🔐 [AUTH] SIGNED_OUT. Limpando tudo...");
         localStorage.clear();
         sessionStorage.clear();
-
         setIsAuthenticated(false);
         isAuthenticatedRef.current = false;
         setStudents([]);
@@ -101,7 +108,9 @@ const App: React.FC = () => {
         setClasses([]);
         setSchoolId(null);
         setSchool(null);
+        setUserRole('school_admin');
         initialLoadComplete.current = false;
+        fetchingProfileRef.current = false;
         setIsLoading(false);
       }
     });
@@ -185,7 +194,13 @@ const App: React.FC = () => {
   // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
   // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
-    if (fetchingProfileRef.current) return;
+    // TRAVA ATÔMICA: Se já está carregando, ignora
+    if (fetchingProfileRef.current) {
+      console.warn("⚠️ [PROFILE] Carregamento já em andamento. Ignorando chamada duplicada.");
+      return;
+    }
+
+    console.log("📊 [PROFILE] Iniciando carregamento de perfil para userId:", userId);
     fetchingProfileRef.current = true;
 
     if (showLoading) setIsLoading(true);
