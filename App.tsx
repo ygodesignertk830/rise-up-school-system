@@ -36,58 +36,56 @@ const App: React.FC = () => {
   const initialLoadComplete = useRef(false); // <--- NEW: Track first successful load
 
   useEffect(() => {
-    console.log("\n🚀 ═══════════════════════════════════════");
-    console.log("[APP MOUNT] Aplicação montada. Inicializando autenticação...");
-    console.log("═══════════════════════════════════════\n");
+    console.log("🚀 [APP MOUNT] Inicializando sistema...");
 
-    // WATCHDOG - Previne travamento infinito
     const watchdog = setTimeout(() => {
-      console.error("\n❌ ═══════════════════════════════════════");
-      console.error("[WATCHDOG] Timeout de 15s! Sistema travado.");
-      console.error("[WATCHDOG] fetchingProfileRef:", fetchingProfileRef.current);
-      console.error("[WATCHDOG] isLoading:", isLoading);
-      console.error("[WATCHDOG] FORÇANDO RESET...");
-      console.error("═══════════════════════════════════════\n");
-
-      fetchingProfileRef.current = false;
-      setIsLoading(false);
+      if (fetchingProfileRef.current || isLoading) {
+        console.error("❌ [WATCHDOG] Timeout atingido. Forçando desbloqueio.");
+        fetchingProfileRef.current = false;
+        setIsLoading(false);
+      }
     }, 15000);
 
-    // ÚNICO LISTENER - Gerencia todo o ciclo de autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("\n🔔 ═══════════════════════════════════════");
-      console.log(`[AUTH EVENT] ${event}`);
-      console.log(`[AUTH] Session exists: ${!!session}`);
-      console.log(`[AUTH] User ID: ${session?.user?.id || 'N/A'}`);
-      console.log("═══════════════════════════════════════\n");
-
-      // Ignorar refresh de token
-      if (event === 'TOKEN_REFRESHED') {
-        console.log("[AUTH] TOKEN_REFRESHED ignorado.");
-        return;
+    // 1. CARGA INICIAL (Garantia para F5)
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log("✅ [INIT] Sessão restaurada via getSession()");
+          setIsAuthenticated(true);
+          isAuthenticatedRef.current = true;
+          await handleUserProfile(session.user.id, session.user.email, true);
+        } else {
+          console.log("ℹ️ [INIT] Nenhuma sessão encontrada no boot.");
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("❌ [INIT] Erro no boot:", err);
+        setIsLoading(false);
       }
+    };
 
-      // LOGIN ou INITIAL_SESSION (F5)
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
-        console.log("✅ [AUTH] Usuário autenticado. Iniciando carregamento...");
+    init();
 
-        // Reset de estados
+    // 2. LISTENER DE EVENTOS (SIGNED_IN, SIGNED_OUT, etc)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`🔔 [AUTH EVENT] ${event}`);
+
+      if (event === 'SIGNED_IN' && session) {
+        // Se já carregamos via INIT, ignoramos o SIGNED_IN duplicado do boot
+        if (initialLoadComplete.current) {
+          console.log("⏭️ [AUTH] SIGNED_IN ignorado (já carregado pelo boot).");
+          return;
+        }
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
-
-        // Carregar perfil
         await handleUserProfile(session.user.id, session.user.email, true);
       }
 
-      // LOGOUT
       else if (event === 'SIGNED_OUT') {
-        console.log("🔐 [AUTH] SIGNED_OUT detectado. Limpando sistema...");
-
-        // Limpar cache
+        console.log("🔐 [AUTH] Logout detectado. Limpando...");
         localStorage.clear();
         sessionStorage.clear();
-
-        // Reset total de estados
         setIsAuthenticated(false);
         isAuthenticatedRef.current = false;
         setStudents([]);
@@ -95,23 +93,13 @@ const App: React.FC = () => {
         setClasses([]);
         setSchoolId(null);
         setSchool(null);
-        setUserRole('school_admin');
         initialLoadComplete.current = false;
         fetchingProfileRef.current = false;
-        setIsLoading(false);
-
-        console.log("✅ [AUTH] Sistema limpo com sucesso.");
-      }
-
-      // SEM SESSÃO (primeira carga)
-      else if (!session) {
-        console.log("ℹ️ [AUTH] Sem sessão ativa. Mostrando login...");
         setIsLoading(false);
       }
     });
 
     return () => {
-      console.log("[APP] Limpeza: removendo listeners...");
       clearTimeout(watchdog);
       subscription.unsubscribe();
     };
@@ -134,21 +122,26 @@ const App: React.FC = () => {
 
     try {
       const requestId = Math.random().toString(36).substring(7);
-      console.time(`⏱️ [${requestId}] Fetch`);
+      console.log(`📡 [FETCH] Request: ${requestId} | School: ${currentSchoolId}`);
 
       let studentsQuery = supabase.from('students').select('*').order('name', { ascending: true });
       let classesQuery = supabase.from('classes').select('*').order('name');
 
-      // Filtro de escola SE houver (Super Admin pode ver tudo se ID for null)
       if (currentSchoolId) {
         studentsQuery = studentsQuery.eq('school_id', currentSchoolId);
         classesQuery = classesQuery.eq('school_id', currentSchoolId);
       }
 
-      const [classesRes, studentsRes] = await Promise.all([classesQuery, studentsQuery]);
+      // SÊNIOR: Timeout de 15s para busca de dados
+      const fetchPromise = Promise.all([classesQuery, studentsQuery]);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout (15s) ao buscar dados")), 15000));
+
+      const [classesRes, studentsRes] = await Promise.race([fetchPromise, timeoutPromise]) as any[];
 
       if (classesRes.error) throw classesRes.error;
       if (studentsRes.error) throw studentsRes.error;
+
+      console.log(`✅ [FETCH] Success: ${requestId} | Students: ${studentsRes.data?.length || 0}`);
 
       // Atualiza Turmas
       if (classesRes.data) setClasses(classesRes.data);
@@ -190,35 +183,26 @@ const App: React.FC = () => {
   // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
   // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
-    console.log("\n👤 ═══════════════════════════════════════");
-    console.log(`[PROFILE START] userId: ${userId} email: ${userEmail}`);
-    console.log(`[PROFILE] fetchingProfileRef ANTES: ${fetchingProfileRef.current}`);
-    console.log("═══════════════════════════════════════\n");
-
-    // TRAVA: Bloquear chamadas simultâneas
     if (fetchingProfileRef.current) {
-      console.error("❌ [PROFILE] JÁ ESTÁ CARREGANDO! Bloqueando chamada duplicada.");
-      console.error("[PROFILE] Isso NÃO deveria acontecer. Investigar race condition.");
+      console.warn("⚠️ [PROFILE] Bloqueio de concorrência ativo.");
       return;
     }
-
     fetchingProfileRef.current = true;
-    console.log("🔒 [PROFILE] Trava ativada (fetchingProfileRef = true)");
 
     if (showLoading) setIsLoading(true);
+    console.log("👤 [PROFILE] Carregando:", userId);
 
     let resolvedSchoolId: string | null = null;
 
     try {
-      // 1. Buscar perfil básico do usuário (Rápido)
-      let { data: userData, error } = await supabase
-        .from('users')
-        .select('role, school_id, email')
-        .eq('id', userId)
-        .single();
+      // SÊNIOR: Adicionamos timeout manual (5s) para consulta de perfil
+      const profilePromise = supabase.from('users').select('role, school_id, email').eq('id', userId).maybeSingle();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout (5s) ao buscar perfil")), 5000));
 
-      // 3. Auto-Provisioning (Se não existir) - Mantemos a lógica original de criação
-      if (!userData || error) {
+      let { data: userData, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+      // 3. Auto-Provisioning (Se não existir)
+      if (!userData) {
         console.log("Perfil não encontrado, criando auto-provisionamento...");
 
         let targetSchoolId: string | null = null;
