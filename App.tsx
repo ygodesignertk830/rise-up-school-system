@@ -36,71 +36,58 @@ const App: React.FC = () => {
   const initialLoadComplete = useRef(false); // <--- NEW: Track first successful load
 
   useEffect(() => {
-    // 1. WATCHDOG (Anti-Loop): Limpa o loading se travar por muito tempo.
-    // SÊNIOR: Removemos o reload() forçado pois ele causa loops infinitos em abas de background.
+    console.log("\n🚀 ═══════════════════════════════════════");
+    console.log("[APP MOUNT] Aplicação montada. Inicializando autenticação...");
+    console.log("═══════════════════════════════════════\n");
+
+    // WATCHDOG - Previne travamento infinito
     const watchdog = setTimeout(() => {
-      setIsLoading((currentLoading) => {
-        if (currentLoading) {
-          console.warn("⚠️ Watchdog: Loading timeout (15s). Destravando UI.");
-          return false; // Apenas solta o loading, não reseta a página
-        }
-        return currentLoading;
-      });
+      console.error("\n❌ ═══════════════════════════════════════");
+      console.error("[WATCHDOG] Timeout de 15s! Sistema travado.");
+      console.error("[WATCHDOG] fetchingProfileRef:", fetchingProfileRef.current);
+      console.error("[WATCHDOG] isLoading:", isLoading);
+      console.error("[WATCHDOG] FORÇANDO RESET...");
+      console.error("═══════════════════════════════════════\n");
+
+      fetchingProfileRef.current = false;
+      setIsLoading(false);
     }, 15000);
 
-    // 2. Init Session - APENAS DETECTA, NÃO CARREGA
-    const initSession = async () => {
-      try {
-        console.log("🔍 [INIT] Verificando sessão existente...");
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error("❌ [INIT] Erro ao verificar sessão:", error);
-          setIsLoading(false);
-          return;
-        }
-
-        if (session) {
-          console.log("✅ [INIT] Sessão detectada. Aguardando onAuthStateChange carregar dados...");
-          // NÃO CARREGAMOS AQUI! Deixamos o onAuthStateChange fazer isso.
-          // Isso elimina a condição de corrida que causava dados zerados.
-        } else {
-          console.log("ℹ️ [INIT] Sem sessão. Mostrando tela de login.");
-          setIsLoading(false);
-        }
-      } catch (err) {
-        console.error("💥 [INIT] Exceção crítica:", err);
-        setIsLoading(false);
-      }
-    };
-
-    initSession();
-
-    // 3. Listener de Autenticação - ÚNICO PONTO DE CARREGAMENTO
+    // ÚNICO LISTENER - Gerencia todo o ciclo de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`🔔 [AUTH EVENT] ${event}`);
+      console.log("\n🔔 ═══════════════════════════════════════");
+      console.log(`[AUTH EVENT] ${event}`);
+      console.log(`[AUTH] Session exists: ${!!session}`);
+      console.log(`[AUTH] User ID: ${session?.user?.id || 'N/A'}`);
+      console.log("═══════════════════════════════════════\n");
 
-      // Ignorar eventos que não mudam o estado de autenticação
-      if (event === 'TOKEN_REFRESHED') return;
+      // Ignorar refresh de token
+      if (event === 'TOKEN_REFRESHED') {
+        console.log("[AUTH] TOKEN_REFRESHED ignorado.");
+        return;
+      }
 
-      if (event === 'SIGNED_IN' && session) {
-        console.log("✅ [AUTH] SIGNED_IN detectado. Carregando perfil...");
+      // LOGIN ou INITIAL_SESSION (F5)
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+        console.log("✅ [AUTH] Usuário autenticado. Iniciando carregamento...");
+
+        // Reset de estados
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
+
+        // Carregar perfil
         await handleUserProfile(session.user.id, session.user.email, true);
       }
 
-      else if (event === 'INITIAL_SESSION' && session) {
-        console.log("✅ [AUTH] INITIAL_SESSION detectado (F5). Carregando perfil...");
-        setIsAuthenticated(true);
-        isAuthenticatedRef.current = true;
-        await handleUserProfile(session.user.id, session.user.email, true);
-      }
-
+      // LOGOUT
       else if (event === 'SIGNED_OUT') {
-        console.log("🔐 [AUTH] SIGNED_OUT. Limpando tudo...");
+        console.log("🔐 [AUTH] SIGNED_OUT detectado. Limpando sistema...");
+
+        // Limpar cache
         localStorage.clear();
         sessionStorage.clear();
+
+        // Reset total de estados
         setIsAuthenticated(false);
         isAuthenticatedRef.current = false;
         setStudents([]);
@@ -112,94 +99,68 @@ const App: React.FC = () => {
         initialLoadComplete.current = false;
         fetchingProfileRef.current = false;
         setIsLoading(false);
+
+        console.log("✅ [AUTH] Sistema limpo com sucesso.");
+      }
+
+      // SEM SESSÃO (primeira carga)
+      else if (!session) {
+        console.log("ℹ️ [AUTH] Sem sessão ativa. Mostrando login...");
+        setIsLoading(false);
       }
     });
 
     return () => {
+      console.log("[APP] Limpeza: removendo listeners...");
       clearTimeout(watchdog);
       subscription.unsubscribe();
     };
   }, []);
 
-  // fetchData - SEMPRE DO BANCO, NUNCA DO CACHE
+  // fetchData PARALELIZADO e Robusto
   const fetchData = async (currentSchoolId: string | null, userId?: string, force = false, overrideRole?: UserRole) => {
     const role = overrideRole || userRole;
 
-    console.log("\n═══════════════════════════════════════");
-    console.log("📡 [FETCH START]", {
-      currentSchoolId,
-      userId,
-      role,
-      force,
-      timestamp: new Date().toISOString()
-    });
-    console.log("═══════════════════════════════════════\n");
-
     // SÊNIOR: Se for Admin, ele pode querer ver tudo. Se for Escola, precisa de ID.
     if (!currentSchoolId && role !== 'super_admin') {
-      console.error("❌ [FETCH] Abortado: Sem schoolId e usuário não é super_admin");
+      console.log("🕵️ Fetch abortado: Faltando contexto.");
       return;
     }
 
     // SÊNIOR: Debounce mais curto (500ms) mas com lock de início
     const now = Date.now();
-    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 500)) {
-      console.warn("⏳ [FETCH] Debounced. Ignorando.");
-      return;
-    }
+    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 500)) return;
     lastFetchRef.current = now;
 
     try {
       const requestId = Math.random().toString(36).substring(7);
-      console.time(`⏱️ [${requestId}] FETCH TOTAL`);
+      console.time(`⏱️ [${requestId}] Fetch`);
 
-      // QUERIES
       let studentsQuery = supabase.from('students').select('*').order('name', { ascending: true });
       let classesQuery = supabase.from('classes').select('*').order('name');
 
+      // Filtro de escola SE houver (Super Admin pode ver tudo se ID for null)
       if (currentSchoolId) {
-        console.log("🏫 [FETCH] Filtrando por school_id:", currentSchoolId);
         studentsQuery = studentsQuery.eq('school_id', currentSchoolId);
         classesQuery = classesQuery.eq('school_id', currentSchoolId);
-      } else {
-        console.log("🌍 [FETCH] Super Admin: carregando TODOS os dados (sem filtro de escola)");
       }
 
-      console.log("🔄 [FETCH] Iniciando queries paralelas...");
       const [classesRes, studentsRes] = await Promise.all([classesQuery, studentsQuery]);
 
-      // VALIDAÇÃO DE ERROS - CRÍTICO!
-      if (classesRes.error) {
-        console.error("❌ [FETCH] ERRO AO BUSCAR TURMAS:", classesRes.error);
-        console.error("Detalhes:", JSON.stringify(classesRes.error, null, 2));
-        throw new Error(`Erro ao carregar turmas: ${classesRes.error.message}`);
-      }
+      if (classesRes.error) throw classesRes.error;
+      if (studentsRes.error) throw studentsRes.error;
 
-      if (studentsRes.error) {
-        console.error("❌ [FETCH] ERRO AO BUSCAR ALUNOS:", studentsRes.error);
-        console.error("Detalhes:", JSON.stringify(studentsRes.error, null, 2));
-        throw new Error(`Erro ao carregar alunos: ${studentsRes.error.message}`);
-      }
+      // Atualiza Turmas
+      if (classesRes.data) setClasses(classesRes.data);
 
-      console.log("✅ [FETCH] Turmas recebidas:", classesRes.data?.length || 0);
-      console.log("✅ [FETCH] Alunos recebidos:", studentsRes.data?.length || 0);
-
-      // ATUALIZA ESTADO - SÓ SE TIVER DADOS VÁLIDOS
-      if (classesRes.data !== null) {
-        console.log("💾 [STATE] Atualizando turmas...");
-        setClasses(classesRes.data);
-      }
-
-      if (studentsRes.data !== null) {
+      // Atualiza Alunos e busca pagamentos
+      if (studentsRes.data) {
         const studentsData = studentsRes.data;
-        console.log("💾 [STATE] Atualizando alunos...");
         setStudents(studentsData);
 
-        // BUSCAR PAGAMENTOS
         if (studentsData.length > 0) {
           const studentIds = studentsData.map(s => s.id);
-          console.log("📄 [FETCH] Buscando pagamentos para", studentIds.length, "alunos...");
-
+          // Otimização: Slice para evitar limites de URI em IN clause se forem milhares (SaaS safety)
           const chunks = [];
           for (let i = 0; i < studentIds.length; i += 100) {
             chunks.push(studentIds.slice(i, i + 100));
@@ -210,38 +171,18 @@ const App: React.FC = () => {
           );
 
           const paymentsResponses = await Promise.all(paymentsPromises);
-
-          // Verifica erros nas queries de pagamentos
-          const paymentsErrors = paymentsResponses.filter(r => r.error);
-          if (paymentsErrors.length > 0) {
-            console.error("❌ [FETCH] ERROS ao buscar pagamentos:", paymentsErrors);
-          }
-
           const allPayments = paymentsResponses.flatMap(res => res.data || []);
-          console.log("✅ [FETCH] Pagamentos recebidos:", allPayments.length);
+
           setPayments(allPayments);
         } else {
-          console.log("ℹ️ [FETCH] Nenhum aluno encontrado. Zerando pagamentos.");
           setPayments([]);
         }
       }
 
-      console.timeEnd(`⏱️ [${requestId}] FETCH TOTAL`);
-      console.log("✅ [FETCH] Concluído com sucesso!\n");
+      console.timeEnd(`⏱️ [${requestId}] Total Fetch`);
     } catch (error: any) {
-      console.error("\n🔥🔥🔥 [FETCH] ERRO CRÍTICO 🔥🔥🔥");
-      console.error("Mensagem:", error.message);
-      console.error("Stack:", error.stack);
-      console.error("Objeto completo:", error);
-      console.error("🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n");
-
-      showAlert(
-        "Erro ao Carregar Dados",
-        `Não foi possível carregar os dados do banco de dados. Por favor, recarregue a página. Erro: ${error.message}`,
-        'error'
-      );
-
-      // NÃO ZERAMOS O ESTADO! Mantemos dados anteriores se houver.
+      console.error('❌ Erro Crítico ao buscar dados:', error);
+      showToast("Conexão instável. Usando dados locais.", "warning");
     }
   };
 
@@ -249,16 +190,20 @@ const App: React.FC = () => {
   // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
   // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
-    // TRAVA ATÔMICA: Se já está carregando, ignora
+    console.log("\n👤 ═══════════════════════════════════════");
+    console.log(`[PROFILE START] userId: ${userId} email: ${userEmail}`);
+    console.log(`[PROFILE] fetchingProfileRef ANTES: ${fetchingProfileRef.current}`);
+    console.log("═══════════════════════════════════════\n");
+
+    // TRAVA: Bloquear chamadas simultâneas
     if (fetchingProfileRef.current) {
-      console.warn("⚠️ [PROFILE] Carregamento já em andamento. Ignorando chamada duplicada.");
+      console.error("❌ [PROFILE] JÁ ESTÁ CARREGANDO! Bloqueando chamada duplicada.");
+      console.error("[PROFILE] Isso NÃO deveria acontecer. Investigar race condition.");
       return;
     }
 
-    console.log("\n👤 ═══════════════════════════════════════");
-    console.log("[PROFILE START] userId:", userId, "email:", userEmail);
-    console.log("═══════════════════════════════════════\n");
     fetchingProfileRef.current = true;
+    console.log("🔒 [PROFILE] Trava ativada (fetchingProfileRef = true)");
 
     if (showLoading) setIsLoading(true);
 
@@ -348,10 +293,19 @@ const App: React.FC = () => {
       }
 
     } catch (error: any) {
-      console.error("Erro no perfil:", error);
+      console.error("\n❌ ═══════════════════════════════════════");
+      console.error("[PROFILE ERROR] Erro crítico ao carregar perfil:", error);
+      console.error("[PROFILE ERROR] Message:", error.message);
+      console.error("[PROFILE ERROR] Stack:", error.stack);
+      console.error("═══════════════════════════════════════\n");
       showAlert("Erro de Inicialização", "Falha ao carregar perfil: " + (error.message || "Erro desconhecido"), 'error');
     } finally {
-      // === LIBERAR TELA SOMENTE APÓS CARGA INICIAL ===
+      console.log("\n🔓 ═══════════════════════════════════════");
+      console.log("[PROFILE END] Liberando trava e finalizando loading...");
+      console.log(`[PROFILE] fetchingProfileRef DEPOIS: ${fetchingProfileRef.current} → FALSE`);
+      console.log("═══════════════════════════════════════\n");
+
+      // SEMPRE resetar, independente de sucesso ou erro
       setIsLoading(false);
       fetchingProfileRef.current = false;
       initialLoadComplete.current = true;
