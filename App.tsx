@@ -281,27 +281,23 @@ const App: React.FC = () => {
         await fetchData(null, userId, true, 'super_admin');
       }
 
+      // SÊNIOR: Sucesso total no carregamento inicial
+      initialLoadComplete.current = true;
+      console.log("✅ [PROFILE] Carregamento inicial completo.");
     } catch (error: any) {
       console.error("\n❌ ═══════════════════════════════════════");
       console.error("[PROFILE ERROR] Erro crítico:", error);
       console.error("═══════════════════════════════════════\n");
 
-      // SÊNIOR: Se deu erro, NÃO marcamos como carregado para permitir retentativa no próximo evento
-      initialLoadComplete.current = false;
+      showAlert("Conexão Lenta", "O sistema está demorando para responder. Tente atualizar a página novamente (F5).", 'warning');
+    } finally {
+      // SÊNIOR: Sempre liberamos a interface e a trava de segurança
       setIsLoading(false);
       fetchingProfileRef.current = false;
 
-      showAlert("Conexão Lenta", "O sistema está demorando para responder. Tente atualizar a página novamente (F5).", 'warning');
-    } finally {
-      // SÊNIOR: Só marcamos sucesso se chegamos ao fim sem erros
-      // A trava fetchingProfileRef é liberada no catch ou aqui
-      if (initialLoadComplete.current === false) {
-        // Já lidado no catch
-      } else {
-        setIsLoading(false);
-        fetchingProfileRef.current = false;
-        initialLoadComplete.current = true;
-      }
+      // Só marcamos como carga inicial completa se chegamos aqui sem erros críticos 
+      // (a lógica de sucesso está dentro do try)
+      console.log("🔓 [PROFILE END] Estado de carregamento liberado.");
     }
   };
 
