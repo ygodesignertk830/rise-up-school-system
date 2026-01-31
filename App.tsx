@@ -63,7 +63,16 @@ const App: React.FC = () => {
         }
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
-        await handleUserProfile(session.user.id, session.user.email, true);
+
+        // SÊNIOR: Verificamos se o usuário é válido antes de buscar perfil
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (user) {
+            handleUserProfile(user.id, user.email, true);
+          } else {
+            console.error("❌ [AUTH] Sessão inválida no getUser()");
+            setIsLoading(false);
+          }
+        });
       }
 
       else if (event === 'SIGNED_OUT') {
@@ -184,11 +193,18 @@ const App: React.FC = () => {
     let resolvedSchoolId: string | null = null;
 
     try {
-      // SÊNIOR: Aumentado para 15s para garantir que não dê timeout falso
+      console.log("📡 [PROFILE] Verificando conexão...");
+
+      // SÊNIOR: Timeout de 10s para consulta de perfil (mais agressivo para falhar rápido e tentar de novo se necessário)
       const profilePromise = supabase.from('users').select('role, school_id, email').eq('id', userId).maybeSingle();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de Rede (15s)")), 15000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de Rede (10s)")), 10000));
 
       let { data: userData, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+      if (error) {
+        console.error("❌ [PROFILE] Erro na query:", error);
+        throw error;
+      }
 
       // 3. Auto-Provisioning (Se não existir)
       if (!userData) {
@@ -267,21 +283,25 @@ const App: React.FC = () => {
 
     } catch (error: any) {
       console.error("\n❌ ═══════════════════════════════════════");
-      console.error("[PROFILE ERROR] Erro crítico ao carregar perfil:", error);
-      console.error("[PROFILE ERROR] Message:", error.message);
-      console.error("[PROFILE ERROR] Stack:", error.stack);
+      console.error("[PROFILE ERROR] Erro crítico:", error);
       console.error("═══════════════════════════════════════\n");
-      /*showAlert("Erro de Inicialização", "Falha ao carregar perfil: " + (error.message || "Erro desconhecido"), 'error');*/
-    } finally {
-      console.log("\n🔓 ═══════════════════════════════════════");
-      console.log("[PROFILE END] Liberando trava e finalizando loading...");
-      console.log(`[PROFILE] fetchingProfileRef DEPOIS: ${fetchingProfileRef.current} → FALSE`);
-      console.log("═══════════════════════════════════════\n");
 
-      // SEMPRE resetar, independente de sucesso ou erro
+      // SÊNIOR: Se deu erro, NÃO marcamos como carregado para permitir retentativa no próximo evento
+      initialLoadComplete.current = false;
       setIsLoading(false);
       fetchingProfileRef.current = false;
-      initialLoadComplete.current = true;
+
+      showAlert("Conexão Lenta", "O sistema está demorando para responder. Tente atualizar a página novamente (F5).", 'warning');
+    } finally {
+      // SÊNIOR: Só marcamos sucesso se chegamos ao fim sem erros
+      // A trava fetchingProfileRef é liberada no catch ou aqui
+      if (initialLoadComplete.current === false) {
+        // Já lidado no catch
+      } else {
+        setIsLoading(false);
+        fetchingProfileRef.current = false;
+        initialLoadComplete.current = true;
+      }
     }
   };
 
