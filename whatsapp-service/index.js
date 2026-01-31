@@ -58,6 +58,30 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
+    // Listener de Comandos Remotos (via Supabase Realtime)
+    const channel = supabase
+        .channel('whatsapp_commands')
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'whatsapp_config',
+            filter: "id=eq.global"
+        }, async (payload) => {
+            const { command } = payload.new;
+            if (command === 'logout') {
+                console.log('🔌 [WHATSAPP] Comando de logout recebido remotamente. Desconectando...');
+                try {
+                    await sock.logout();
+                    // Limpa o comando no banco para não entrar em loop
+                    await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
+                } catch (e) {
+                    console.error('⚠️ [WHATSAPP] Erro ao deslogar:', e.message);
+                }
+                process.exit(0);
+            }
+        })
+        .subscribe();
+
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 

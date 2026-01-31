@@ -8,6 +8,8 @@ const WhatsAppIntegration: React.FC = () => {
     const [config, setConfig] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    const [isActionLoading, setIsActionLoading] = useState(false);
+
     const fetchStatus = async () => {
         try {
             const { data, error } = await supabase
@@ -22,6 +24,38 @@ const WhatsAppIntegration: React.FC = () => {
             console.error('Erro ao buscar status do WhatsApp:', err);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        const { showConfirm, showToast } = await import('../utils/alerts');
+        const confirmed = await showConfirm(
+            'Desconectar WhatsApp?',
+            'Você precisará escanear o QR Code novamente para reativar as cobranças automáticas.'
+        );
+
+        if (!confirmed) return;
+
+        setIsActionLoading(true);
+        try {
+            const { error } = await supabase
+                .from('whatsapp_config')
+                .update({
+                    status: 'logged_out',
+                    qr_code: null,
+                    command: 'logout',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', 'global');
+
+            if (error) throw error;
+            showToast('Comando de desconexão enviado!', 'success');
+        } catch (err: any) {
+            console.error('Erro ao desconectar:', err);
+            const { showAlert } = await import('../utils/alerts');
+            showAlert('Erro', 'Não foi possível enviar o comando de desconexão.', 'error');
+        } finally {
+            setIsActionLoading(false);
         }
     };
 
@@ -96,10 +130,12 @@ const WhatsAppIntegration: React.FC = () => {
 
                     {status === 'connected' && (
                         <button
-                            onClick={() => {/* Lógica futura de logout */ }}
-                            className="mt-8 flex items-center gap-2 px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl font-bold transition-all"
+                            onClick={handleLogout}
+                            disabled={isActionLoading}
+                            className="mt-8 flex items-center gap-2 px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl font-bold transition-all disabled:opacity-50"
                         >
-                            <LogOut className="w-5 h-5" /> Desconectar WhatsApp
+                            {isActionLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
+                            {isActionLoading ? 'Desconectando...' : 'Desconectar WhatsApp'}
                         </button>
                     )}
                 </motion.div>
