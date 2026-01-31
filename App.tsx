@@ -77,43 +77,30 @@ const App: React.FC = () => {
 
     initSession();
 
-    // 3. Listener Realtime
+    // 3. Listener Realtime - SÊNIOR: Centralizamos a limpeza e evitamos loops.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`Auth Event: ${event}`);
 
-      // Ignora eventos irrelevantes para evitar re-render/loops
-      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
-
       if (event === 'SIGNED_IN' && session) {
+        // Anti-Race: Se já estamos carregando ou já carregamos, evitamos duplicidade no F5
+        if (initialLoadComplete.current) return;
+
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
-
-        // SÊNIOR: Só mostra loading global se for a PRIMEIRA vez ou se não temos dados básicos
-        const showGlobalLoading = !initialLoadComplete.current;
-        await handleUserProfile(session.user.id, session.user.email, showGlobalLoading);
+        await handleUserProfile(session.user.id, session.user.email, true);
       } else if (event === 'SIGNED_OUT') {
-        console.log("🔐 SIGNED_OUT: Executando Limpeza Total...");
+        console.log("🔐 SIGNED_OUT: Limpando Cache e Estados...");
 
-        // SÊNIOR: Limpeza de Cache e Storage Centralizada (Desejo do Usuário)
         localStorage.clear();
         sessionStorage.clear();
 
         setIsAuthenticated(false);
         isAuthenticatedRef.current = false;
-
         setStudents([]);
         setPayments([]);
         setClasses([]);
-
-        setIsSchoolBlocked(false);
-        setSubscriptionDueDate(null);
-        setSchoolName('');
-        isSchoolBlockedRef.current = false;
-        fetchingProfileRef.current = false;
-
         setSchoolId(null);
         setSchool(null);
-        setUserRole('school_admin');
         initialLoadComplete.current = false;
         setIsLoading(false);
       }
@@ -126,32 +113,34 @@ const App: React.FC = () => {
   }, []);
 
   // fetchData PARALELIZADO e Robusto
-  const fetchData = async (currentSchoolId: string | null, userId?: string, force = false) => {
-    // SÊNIOR: Se não houver schoolId, mas for super_admin, ele pode ver dados globais (ou nada se for restrito)
-    // Para evitar "zeroed out", só prosseguimos se houver contexto ou se for admin.
-    if (!currentSchoolId && userRole !== 'super_admin') {
-      console.log("🕵️ Fetch abortado: Sem schoolId e não é Super Admin.");
+  const fetchData = async (currentSchoolId: string | null, userId?: string, force = false, overrideRole?: UserRole) => {
+    const role = overrideRole || userRole;
+
+    // SÊNIOR: Se for Admin, ele pode querer ver tudo. Se for Escola, precisa de ID.
+    if (!currentSchoolId && role !== 'super_admin') {
+      console.log("🕵️ Fetch abortado: Faltando contexto.");
       return;
     }
 
-    // SÊNIOR: Debounce de 1000ms
+    // SÊNIOR: Debounce mais curto (500ms) mas com lock de início
     const now = Date.now();
-    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 1000)) {
-      console.log("⏳ Fetch debounced. Ignorando requisição duplicada.");
-      return;
-    }
+    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 500)) return;
     lastFetchRef.current = now;
 
     try {
       const requestId = Math.random().toString(36).substring(7);
-      console.time(`⏱️ [${requestId}] Total Fetch`);
-      console.log(`📡 [${requestId}] Fetching data...`);
+      console.time(`⏱️ [${requestId}] Fetch`);
 
-      // 1. Busca Turmas e Alunos em PARALELO (Waterfall fix)
-      const [classesRes, studentsRes] = await Promise.all([
-        supabase.from('classes').select('*').eq('school_id', currentSchoolId).order('name'),
-        supabase.from('students').select('*').eq('school_id', currentSchoolId).order('name', { ascending: true })
-      ]);
+      let studentsQuery = supabase.from('students').select('*').order('name', { ascending: true });
+      let classesQuery = supabase.from('classes').select('*').order('name');
+
+      // Filtro de escola SE houver (Super Admin pode ver tudo se ID for null)
+      if (currentSchoolId) {
+        studentsQuery = studentsQuery.eq('school_id', currentSchoolId);
+        classesQuery = classesQuery.eq('school_id', currentSchoolId);
+      }
+
+      const [classesRes, studentsRes] = await Promise.all([classesQuery, studentsQuery]);
 
       if (classesRes.error) throw classesRes.error;
       if (studentsRes.error) throw studentsRes.error;
@@ -196,7 +185,8 @@ const App: React.FC = () => {
   // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
   // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
   const handleUserProfile = async (userId: string, userEmail?: string, showLoading = true) => {
-    // REMOVIDO: fetchingProfileRef check para garantir que sempre tente buscar se chamado
+    if (fetchingProfileRef.current) return;
+    fetchingProfileRef.current = true;
 
     if (showLoading) setIsLoading(true);
 
@@ -278,9 +268,11 @@ const App: React.FC = () => {
           }
         }
 
-        // B. Busca Dados Operacionais (AGORA ESPERAMOS A PRIMEIRA CARGA)
-        // Ignoramos debounce para a primeira carga necessária
-        await fetchData(resolvedSchoolId, userId, true);
+        // B. Busca Dados Operacionais (COM ROLE EXPLÍCITA)
+        await fetchData(resolvedSchoolId, userId, true, userData.role as UserRole);
+      } else if (userData?.role === 'super_admin') {
+        // Super Admin sem escola ainda sim carrega dados globais
+        await fetchData(null, userId, true, 'super_admin');
       }
 
     } catch (error: any) {
@@ -328,16 +320,17 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     try {
       setIsLoading(true);
-      // SÊNIOR: A limpeza é feita no onAuthStateChange(SIGNED_OUT) para ser verdadeiramente centralizada.
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await supabase.auth.signOut();
 
-      // Opcional: Se ainda assim o loop ocorrer, usamos replace em vez de reload
-      // window.location.replace('/'); 
+      // SÊNIOR: Limpeza redundante para garantir cura do "loop"
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // SÊNIOR: replace('/') é melhor que reload() para SPA
+      window.location.replace('/');
     } catch (error) {
       console.error("Erro ao sair:", error);
-      setIsLoading(false);
-      showAlert("Erro", "Falha ao desconectar. Tente novamente.", "error");
+      window.location.replace('/');
     }
   };
 
