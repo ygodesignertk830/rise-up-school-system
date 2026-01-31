@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, AlertTriangle, CheckCircle, Clock, LogOut, BookOpen, Plus, X, Rocket, Sparkles, Bell, Calendar,
   LayoutDashboard, GraduationCap, Banknote, Database, Menu, ChevronLeft, Settings, Save, RefreshCw,
-  Mail, Shield, User, Activity, ArrowRight, Lock, Unlock
+  Mail, Shield, User, Activity, ArrowRight, Lock, Unlock, Phone
 } from 'lucide-react';
 import officialLogo from '../LogotipoRiseUpOficial.png';
 import { formatCurrency, formatDate, getLocalDateString, calculatePaymentDetails, getPaymentStatus, getDaysDifference } from '../utils/finance';
@@ -337,6 +337,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'attendance', label: 'Chamada', icon: CheckCircle },
     { id: 'classes', label: 'Turmas', icon: GraduationCap },
     { id: 'teachers', label: 'Professores', icon: BookOpen },
+    { id: 'whatsapp', label: 'WhatsApp', icon: Phone },
     { id: 'financial', label: 'Financeiro', icon: Banknote },
   ];
 
@@ -600,7 +601,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
 
-              {activeTab === 'whatsapp' && <WhatsAppIntegration />}
+              {activeTab === 'whatsapp' && (
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                  <div className="max-w-7xl mx-auto"><WhatsAppIntegration /></div>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </main>
