@@ -54,14 +54,15 @@ const App: React.FC = () => {
           console.log("✅ [INIT] Sessão restaurada via getSession()");
           setIsAuthenticated(true);
           isAuthenticatedRef.current = true;
-          await handleUserProfile(session.user.id, session.user.email, true);
+          // SÊNIOR: Não exibimos loading aqui se o listener já disparou
+          await handleUserProfile(session.user.id, session.user.email, !fetchingProfileRef.current);
         } else {
           console.log("ℹ️ [INIT] Nenhuma sessão encontrada no boot.");
-          setIsLoading(false);
+          if (!fetchingProfileRef.current) setIsLoading(false);
         }
       } catch (err) {
         console.error("❌ [INIT] Erro no boot:", err);
-        setIsLoading(false);
+        if (!fetchingProfileRef.current) setIsLoading(false);
       }
     };
 
@@ -141,7 +142,7 @@ const App: React.FC = () => {
       if (classesRes.error) throw classesRes.error;
       if (studentsRes.error) throw studentsRes.error;
 
-      console.log(`✅ [FETCH] Success: ${requestId} | Students: ${studentsRes.data?.length || 0}`);
+      console.log(`✅ [FETCH] Sucesso: ${requestId} | Alunos: ${studentsRes.data?.length || 0}`);
 
       // Atualiza Turmas
       if (classesRes.data) setClasses(classesRes.data);
@@ -172,7 +173,7 @@ const App: React.FC = () => {
         }
       }
 
-      console.timeEnd(`⏱️ [${requestId}] Total Fetch`);
+      console.log(`✅ [FETCH] Finalizado: ${requestId}`);
     } catch (error: any) {
       console.error('❌ Erro Crítico ao buscar dados:', error);
       showToast("Conexão instável. Usando dados locais.", "warning");
@@ -195,9 +196,9 @@ const App: React.FC = () => {
     let resolvedSchoolId: string | null = null;
 
     try {
-      // SÊNIOR: Adicionamos timeout manual (5s) para consulta de perfil
+      // SÊNIOR: Aumentado para 10s para evitar falhas falsas em conexões lentas
       const profilePromise = supabase.from('users').select('role, school_id, email').eq('id', userId).maybeSingle();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout (5s) ao buscar perfil")), 5000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout (10s) ao buscar perfil")), 10000));
 
       let { data: userData, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
 
