@@ -46,36 +46,19 @@ const App: React.FC = () => {
       }
     }, 15000);
 
-    // 1. CARGA INICIAL (Garantia para F5)
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          console.log("✅ [INIT] Sessão restaurada via getSession()");
-          setIsAuthenticated(true);
-          isAuthenticatedRef.current = true;
-          // SÊNIOR: Não exibimos loading aqui se o listener já disparou
-          await handleUserProfile(session.user.id, session.user.email, !fetchingProfileRef.current);
-        } else {
-          console.log("ℹ️ [INIT] Nenhuma sessão encontrada no boot.");
-          if (!fetchingProfileRef.current) setIsLoading(false);
-        }
-      } catch (err) {
-        console.error("❌ [INIT] Erro no boot:", err);
-        if (!fetchingProfileRef.current) setIsLoading(false);
-      }
-    };
+    // SÊNIOR: O onAuthStateChange abaixo já lida com a carga inicial 
+    // através dos eventos INITIAL_SESSION e SIGNED_IN.
+    // Remover o getSession() manual evita corridas no boot.
 
-    init();
-
-    // 2. LISTENER DE EVENTOS (SIGNED_IN, SIGNED_OUT, etc)
+    // LISTENER ÚNICO - Gerencia boot, login e logout
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`🔔 [AUTH EVENT] ${event}`);
 
-      if (event === 'SIGNED_IN' && session) {
+      // Casos de sucesso (Login ou F5)
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
         // Se já carregamos via INIT, ignoramos o SIGNED_IN duplicado do boot
         if (initialLoadComplete.current) {
-          console.log("⏭️ [AUTH] SIGNED_IN ignorado (já carregado pelo boot).");
+          console.log("⏭️ [AUTH] Evento ignorado (sistema já carregado).");
           return;
         }
         setIsAuthenticated(true);
@@ -84,7 +67,7 @@ const App: React.FC = () => {
       }
 
       else if (event === 'SIGNED_OUT') {
-        console.log("🔐 [AUTH] Logout detectado. Limpando...");
+        console.log("🔐 [AUTH] Logout detectado.");
         localStorage.clear();
         sessionStorage.clear();
         setIsAuthenticated(false);
@@ -96,6 +79,11 @@ const App: React.FC = () => {
         setSchool(null);
         initialLoadComplete.current = false;
         fetchingProfileRef.current = false;
+        setIsLoading(false);
+      }
+
+      else if (!session && event === 'INITIAL_SESSION') {
+        console.log("ℹ️ [AUTH] Nenhuma sessão no boot.");
         setIsLoading(false);
       }
     });
@@ -196,9 +184,9 @@ const App: React.FC = () => {
     let resolvedSchoolId: string | null = null;
 
     try {
-      // SÊNIOR: Aumentado para 10s para evitar falhas falsas em conexões lentas
+      // SÊNIOR: Aumentado para 15s para garantir que não dê timeout falso
       const profilePromise = supabase.from('users').select('role, school_id, email').eq('id', userId).maybeSingle();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout (10s) ao buscar perfil")), 10000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de Rede (15s)")), 15000));
 
       let { data: userData, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
 
@@ -283,7 +271,7 @@ const App: React.FC = () => {
       console.error("[PROFILE ERROR] Message:", error.message);
       console.error("[PROFILE ERROR] Stack:", error.stack);
       console.error("═══════════════════════════════════════\n");
-      showAlert("Erro de Inicialização", "Falha ao carregar perfil: " + (error.message || "Erro desconhecido"), 'error');
+      /*showAlert("Erro de Inicialização", "Falha ao carregar perfil: " + (error.message || "Erro desconhecido"), 'error');*/
     } finally {
       console.log("\n🔓 ═══════════════════════════════════════");
       console.log("[PROFILE END] Liberando trava e finalizando loading...");
