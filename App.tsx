@@ -36,22 +36,6 @@ const App: React.FC = () => {
   const initialLoadComplete = useRef(false); // <--- NEW: Track first successful load
 
   useEffect(() => {
-    // 0. LIMPEZA DE CACHE CORROMPIDO (Correção definitiva do bug F5)
-    // Remove qualquer cache antigo do localStorage EXCETO o token de autenticação
-    try {
-      const authKeys = ['supabase.auth.token', 'sb-'];
-      Object.keys(localStorage).forEach(key => {
-        const isAuthKey = authKeys.some(authKey => key.includes(authKey));
-        if (!isAuthKey) {
-          console.log(`🧹 [CACHE] Removendo cache potencialmente corrompido: ${key}`);
-          localStorage.removeItem(key);
-        }
-      });
-      console.log("✅ [CACHE] Limpeza de cache concluída. Apenas tokens de autenticação preservados.");
-    } catch (err) {
-      console.warn("⚠️ [CACHE] Erro ao limpar cache:", err);
-    }
-
     // 1. WATCHDOG (Anti-Loop): Limpa o loading se travar por muito tempo.
     // SÊNIOR: Removemos o reload() forçado pois ele causa loops infinitos em abas de background.
     const watchdog = setTimeout(() => {
@@ -155,6 +139,11 @@ const App: React.FC = () => {
     try {
       const requestId = Math.random().toString(36).substring(7);
       console.time(`⏱️ [${requestId}] Fetch`);
+      console.log(`📡 [${requestId}] Buscando dados do BANCO (não cache)...`, {
+        schoolId: currentSchoolId,
+        role: role,
+        force: force
+      });
 
       let studentsQuery = supabase.from('students').select('*').order('name', { ascending: true });
       let classesQuery = supabase.from('classes').select('*').order('name');
@@ -166,6 +155,7 @@ const App: React.FC = () => {
       }
 
       const [classesRes, studentsRes] = await Promise.all([classesQuery, studentsQuery]);
+
 
       if (classesRes.error) throw classesRes.error;
       if (studentsRes.error) throw studentsRes.error;
@@ -300,9 +290,12 @@ const App: React.FC = () => {
         }
 
         // B. Busca Dados Operacionais (COM ROLE EXPLÍCITA)
+        // CRITICAL: SEMPRE força refetch (force=true) para ignorar qualquer cache
+        console.log("📊 [PROFILE] Forçando refetch completo de dados operacionais...");
         await fetchData(resolvedSchoolId, userId, true, userData.role as UserRole);
       } else if (userData?.role === 'super_admin') {
         // Super Admin sem escola ainda sim carrega dados globais
+        console.log("👑 [PROFILE] Carregando dados globais para Super Admin...");
         await fetchData(null, userId, true, 'super_admin');
       }
 
