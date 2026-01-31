@@ -36,6 +36,22 @@ const App: React.FC = () => {
   const initialLoadComplete = useRef(false); // <--- NEW: Track first successful load
 
   useEffect(() => {
+    // 0. LIMPEZA DE CACHE CORROMPIDO (Correção definitiva do bug F5)
+    // Remove qualquer cache antigo do localStorage EXCETO o token de autenticação
+    try {
+      const authKeys = ['supabase.auth.token', 'sb-'];
+      Object.keys(localStorage).forEach(key => {
+        const isAuthKey = authKeys.some(authKey => key.includes(authKey));
+        if (!isAuthKey) {
+          console.log(`🧹 [CACHE] Removendo cache potencialmente corrompido: ${key}`);
+          localStorage.removeItem(key);
+        }
+      });
+      console.log("✅ [CACHE] Limpeza de cache concluída. Apenas tokens de autenticação preservados.");
+    } catch (err) {
+      console.warn("⚠️ [CACHE] Erro ao limpar cache:", err);
+    }
+
     // 1. WATCHDOG (Anti-Loop): Limpa o loading se travar por muito tempo.
     // SÊNIOR: Removemos o reload() forçado pois ele causa loops infinitos em abas de background.
     const watchdog = setTimeout(() => {
