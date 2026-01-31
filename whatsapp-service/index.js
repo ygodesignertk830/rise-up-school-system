@@ -46,11 +46,13 @@ async function connectToWhatsApp() {
         timezone: "America/Rio_Branco"
     });
 
+    /*
     // Comando de Teste: Executa 5 segundos após ligar
     setTimeout(() => {
         console.log('🧪 [SIMULAÇÃO] Iniciando disparo de teste em 5 segundos...');
         runBillingRoutine(sock);
     }, 5000);
+    */
 }
 
 async function runBillingRoutine(sock) {
@@ -78,6 +80,11 @@ async function runBillingRoutine(sock) {
                     }
                 }
                 return `55${clean}@s.whatsapp.net`;
+            }
+
+            if (!student.phone) {
+                console.log(`⚠️ [BOT] Aluno ${student.name} sem telefone cadastrado. Pulando.`);
+                continue;
             }
 
             const jid = getJid(student.phone);
