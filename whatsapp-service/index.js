@@ -8,6 +8,44 @@ import qrcode from 'qrcode-terminal';
 import cron from 'node-cron';
 import pino from 'pino';
 import { getDuePayments, formatCurrency, formatDate } from './lib/bot.js';
+import { supabase } from './lib/supabase.js';
+
+/**
+ * NORMALIZAÇÃO SÊNIOR (Brasil): No WhatsApp, números com DDD > 31 
+ * geralmente NÃO possuem o 9º dígito no JID oficial, mesmo que 
+ * no discador o número tenha 9 dígitos.
+ */
+function getJid(rawPhone) {
+    if (!rawPhone) return null;
+    let clean = String(rawPhone).replace(/\D/g, '');
+    // Remove 55 se já estiver lá
+    if (clean.length > 11 && clean.startsWith('55')) clean = clean.slice(2);
+
+    if (clean.length === 11 && clean.startsWith('9', 2)) {
+        const ddd = parseInt(clean.substring(0, 2));
+        // Se DDD > 31, removemos o 9 (terceiro dígito) para o JID
+        if (ddd > 31) {
+            return `55${clean.substring(0, 2)}${clean.substring(3)}@s.whatsapp.net`;
+        }
+    }
+    return `55${clean}@s.whatsapp.net`;
+}
+
+async function updateWhatsAppStatus(status, qr = null) {
+    try {
+        const { error } = await supabase
+            .from('whatsapp_config')
+            .upsert({
+                id: 'global',
+                status,
+                qr_code: qr,
+                updated_at: new Date().toISOString()
+            });
+        if (error) console.error('⚠️ [SUPABASE] Erro ao atualizar status do WhatsApp:', error.message);
+    } catch (e) {
+        console.error('⚠️ [SUPABASE] Erro na conexão:', e.message);
+    }
+}
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -26,14 +64,17 @@ async function connectToWhatsApp() {
         if (qr) {
             console.log('💡 [WHATSAPP] Novo QR Code gerado. Escaneie para conectar:');
             qrcode.generate(qr, { small: true });
+            updateWhatsAppStatus('connecting', qr);
         }
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('❌ [WHATSAPP] Conexão fechada. Motivo:', lastDisconnect.error, 'Reconectando:', shouldReconnect);
+            updateWhatsAppStatus('logged_out');
             if (shouldReconnect) connectToWhatsApp();
         } else if (connection === 'open') {
             console.log('✅ [WHATSAPP] Conexão estabelecida com sucesso!');
+            updateWhatsAppStatus('connected');
         }
     });
 
@@ -62,25 +103,6 @@ async function runBillingRoutine(sock) {
 
         for (const alert of alerts) {
             const { student, payment, type } = alert;
-            /**
-             * NORMALIZAÇÃO SÊNIOR (Brasil): No WhatsApp, números com DDD > 31 
-             * geralmente NÃO possuem o 9º dígito no JID oficial, mesmo que 
-             * no discador o número tenha 9 dígitos.
-             */
-            function getJid(rawPhone) {
-                let clean = rawPhone.replace(/\D/g, '');
-                // Remove 55 se já estiver lá
-                if (clean.length > 11 && clean.startsWith('55')) clean = clean.slice(2);
-
-                if (clean.length === 11 && clean.startsWith('9', 2)) {
-                    const ddd = parseInt(clean.substring(0, 2));
-                    // Se DDD > 31, removemos o 9 (terceiro dígito) para o JID
-                    if (ddd > 31) {
-                        return `55${clean.substring(0, 2)}${clean.substring(3)}@s.whatsapp.net`;
-                    }
-                }
-                return `55${clean}@s.whatsapp.net`;
-            }
 
             if (!student.phone) {
                 console.log(`⚠️ [BOT] Aluno ${student.name} sem telefone cadastrado. Pulando.`);
@@ -88,6 +110,8 @@ async function runBillingRoutine(sock) {
             }
 
             const jid = getJid(student.phone);
+            if (!jid) continue;
+
             const valueStr = formatCurrency(payment.calculatedAmount || payment.amount);
             const dateStr = formatDate(payment.due_date);
 

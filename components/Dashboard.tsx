@@ -13,6 +13,7 @@ import Financial from './Financial';
 import SqlDisplay from './SqlDisplay';
 import Teachers from './Teachers';
 import Attendance from './Attendance';
+import WhatsAppIntegration from './WhatsAppIntegration';
 import { Student, Payment, Class, School } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
@@ -598,6 +599,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <div className="max-w-7xl mx-auto"><Financial payments={payments} students={students} classes={classes} interestRate={currentInterestRate} /></div>
                 </div>
               )}
+
+              {activeTab === 'whatsapp' && <WhatsAppIntegration />}
             </motion.div>
           </AnimatePresence>
         </main>
