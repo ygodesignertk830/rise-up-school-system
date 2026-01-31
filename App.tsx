@@ -120,6 +120,68 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // fetchData PARALELIZADO e Robusto
+  const fetchData = async (currentSchoolId: string | null, userId?: string, force = false) => {
+    if (!currentSchoolId) return;
+
+    // SÊNIOR: Debounce de 1000ms (ajustado p/ evitar sobrecarga) - ignorado se for 'force'
+    const now = Date.now();
+    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 1000)) {
+      console.log("⏳ Fetch debounced. Ignorando requisição duplicada.");
+      return;
+    }
+    lastFetchRef.current = now;
+
+    try {
+      const requestId = Math.random().toString(36).substring(7);
+      console.time(`⏱️ [${requestId}] Total Fetch`);
+      console.log(`📡 [${requestId}] Fetching data...`);
+
+      // 1. Busca Turmas e Alunos em PARALELO (Waterfall fix)
+      const [classesRes, studentsRes] = await Promise.all([
+        supabase.from('classes').select('*').eq('school_id', currentSchoolId).order('name'),
+        supabase.from('students').select('*').eq('school_id', currentSchoolId).order('name', { ascending: true })
+      ]);
+
+      if (classesRes.error) throw classesRes.error;
+      if (studentsRes.error) throw studentsRes.error;
+
+      // Atualiza Turmas
+      if (classesRes.data) setClasses(classesRes.data);
+
+      // Atualiza Alunos e busca pagamentos
+      if (studentsRes.data) {
+        const studentsData = studentsRes.data;
+        setStudents(studentsData);
+
+        if (studentsData.length > 0) {
+          const studentIds = studentsData.map(s => s.id);
+          // Otimização: Slice para evitar limites de URI em IN clause se forem milhares (SaaS safety)
+          const chunks = [];
+          for (let i = 0; i < studentIds.length; i += 100) {
+            chunks.push(studentIds.slice(i, i + 100));
+          }
+
+          const paymentsPromises = chunks.map(chunk =>
+            supabase.from('payments').select('*').in('student_id', chunk)
+          );
+
+          const paymentsResponses = await Promise.all(paymentsPromises);
+          const allPayments = paymentsResponses.flatMap(res => res.data || []);
+
+          setPayments(allPayments);
+        } else {
+          setPayments([]);
+        }
+      }
+
+      console.timeEnd(`⏱️ [${requestId}] Total Fetch`);
+    } catch (error: any) {
+      console.error('❌ Erro Crítico ao buscar dados:', error);
+      showToast("Conexão instável. Usando dados locais.", "warning");
+    }
+  };
+
   // Lógica crítica: Verifica perfil, cria se não existir (Auto-Provisioning)
   // FIX: Refatorado para entrada IMEDIATA e Robustez no Reload.
   // 1. Busca User -> 2. Libera Tela -> 3. Background Fetch com IDs já resolvidos
@@ -188,42 +250,37 @@ const App: React.FC = () => {
         setSchoolId(userData.school_id);
       }
 
+      // === AÇÃO: BUSCAR DADOS ANTES DE LIBERAR TELA ===
+      if (resolvedSchoolId) {
+        // A. Busca Dados da Escola 
+        const { data: schoolData, error: schoolError } = await supabase.from('schools').select('*').eq('id', resolvedSchoolId).maybeSingle();
+
+        if (schoolError) console.error("School metadata error:", schoolError);
+
+        if (schoolData) {
+          setSchool(schoolData);
+          setSchoolName(schoolData.name);
+          setSubscriptionDueDate(schoolData.subscription_due_date);
+
+          const today = getLocalDateString();
+          if (!schoolData.active || (schoolData.subscription_due_date && schoolData.subscription_due_date < today)) {
+            setIsSchoolBlocked(true);
+          }
+        }
+
+        // B. Busca Dados Operacionais (AGORA ESPERAMOS A PRIMEIRA CARGA)
+        // Ignoramos debounce para a primeira carga necessária
+        await fetchData(resolvedSchoolId, userId, true);
+      }
+
     } catch (error: any) {
       console.error("Erro no perfil:", error);
       showAlert("Erro de Inicialização", "Falha ao carregar perfil: " + (error.message || "Erro desconhecido"), 'error');
-      // Tentar limpar sessão se for erro grave de auth? Não, melhor deixar usuário tentar logar de novo via UI.
     } finally {
-      // === AÇÃO IMEDIATA: LIBERAR LOADING ===
+      // === LIBERAR TELA SOMENTE APÓS CARGA INICIAL ===
       setIsLoading(false);
       fetchingProfileRef.current = false;
       initialLoadComplete.current = true;
-
-      // 5. Background Data Fetch 
-      if (resolvedSchoolId) {
-        setTimeout(async () => {
-          // A. Busca Dados da Escola 
-          const { data: schoolData, error: schoolError } = await supabase.from('schools').select('*').eq('id', resolvedSchoolId).single();
-
-          if (schoolError) console.error("School metadata error:", schoolError);
-
-          if (schoolData) {
-            setSchool(schoolData);
-            setSchoolName(schoolData.name);
-            setSubscriptionDueDate(schoolData.subscription_due_date);
-
-            const today = getLocalDateString();
-            if (!schoolData.active || (schoolData.subscription_due_date && schoolData.subscription_due_date < today)) {
-              setIsSchoolBlocked(true);
-            }
-          }
-
-          // B. Busca Dados Operacionais
-          fetchData(resolvedSchoolId, userId);
-
-        }, 0);
-      } else {
-        console.warn("DEBUG: School ID missing in background fetch.");
-      }
     }
   };
 
@@ -244,71 +301,7 @@ const App: React.FC = () => {
   }, [isAuthenticated, userRole, isSchoolBlocked, schoolId]);
 
 
-  // fetchData SIMPLIFICADO: Sem "Auto-Repair" loops
-  const fetchData = async (currentSchoolId: string | null, userId?: string) => {
-    if (!currentSchoolId) return;
 
-    // SÊNIOR: Debounce de 500ms para evitar spam de rede em eventos simultâneos (Realtime)
-    const now = Date.now();
-    if (now - lastFetchRef.current < 500) {
-      console.log("⏳ Fetch debounced. Ignorando requisição duplicada.");
-      return;
-    }
-    lastFetchRef.current = now;
-
-    try {
-      // SÊNIOR: Adicionamos um console.time para monitorar performance e logs mais claros
-      const requestId = Math.random().toString(36).substring(7);
-      console.log(`📡 [${requestId}] Fetching data for school: ${currentSchoolId}`);
-
-      // 1. Turmas
-      const { data: classesData, error: classesError } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('school_id', currentSchoolId)
-        .order('name');
-
-      if (classesError) throw classesError;
-      if (classesData) setClasses(classesData);
-
-      // 2. Alunos
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('students')
-        .select('*')
-        .eq('school_id', currentSchoolId)
-        .order('name', { ascending: true });
-
-      if (studentsError) throw studentsError;
-
-      // SÊNIOR: MUITO IMPORTANTE! 
-      // Se studentsData for null (erro silencioso do Supabase/Network), NÃO resetamos o estado.
-      // Resetar para [] causa o efeito "banco zerado" que o usuário relatou.
-      if (studentsData) {
-        setStudents(studentsData);
-
-        if (studentsData.length > 0) {
-          const studentIds = studentsData.map(s => s.id);
-          const { data: paymentsData, error: paymentsError } = await supabase
-            .from('payments')
-            .select('*')
-            .in('student_id', studentIds);
-
-          if (paymentsError) throw paymentsError;
-          if (paymentsData) setPayments(paymentsData);
-        } else {
-          setPayments([]);
-        }
-      }
-
-      console.log(`✅ [${requestId}] Fetch completed successfully.`);
-
-    } catch (error: any) {
-      console.error('❌ Erro Crítico ao buscar dados:', error);
-      // SÊNIOR: Não limpamos o estado aqui! Mantemos o que temos na tela (Stale-While-Revalidate pattern parcial)
-      // Apenas avisamos o usuário se for algo persistente.
-      showToast("Conexão instável. Mantendo dados locais.", "warning");
-    }
-  };
 
   const handleLogin = () => {
     // onAuthStateChange will handle this
