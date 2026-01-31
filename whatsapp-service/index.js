@@ -37,9 +37,9 @@ async function connectToWhatsApp() {
         }
     });
 
-    // Agendamento: Todos os dias às 08:00 (Horário do Acre)
+    // Agendamento: Todos os dias às 11:00 (Horário do Acre)
     cron.schedule('0 11 * * *', async () => {
-        console.log('🚀 [CRON] Iniciando rotina de cobrança automática (08:00 AC)...');
+        console.log('🚀 [CRON] Iniciando rotina de cobrança automática (11:00 AC)...');
         await runBillingRoutine(sock);
     }, {
         scheduled: true,
