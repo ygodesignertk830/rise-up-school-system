@@ -92,7 +92,12 @@ const App: React.FC = () => {
         const showGlobalLoading = !initialLoadComplete.current;
         await handleUserProfile(session.user.id, session.user.email, showGlobalLoading);
       } else if (event === 'SIGNED_OUT') {
-        console.log("SIGNED_OUT event detected. Cleaning up...");
+        console.log("🔐 SIGNED_OUT: Executando Limpeza Total...");
+
+        // SÊNIOR: Limpeza de Cache e Storage Centralizada (Desejo do Usuário)
+        localStorage.clear();
+        sessionStorage.clear();
+
         setIsAuthenticated(false);
         isAuthenticatedRef.current = false;
 
@@ -109,7 +114,7 @@ const App: React.FC = () => {
         setSchoolId(null);
         setSchool(null);
         setUserRole('school_admin');
-        initialLoadComplete.current = false; // Reset on logout
+        initialLoadComplete.current = false;
         setIsLoading(false);
       }
     });
@@ -122,9 +127,14 @@ const App: React.FC = () => {
 
   // fetchData PARALELIZADO e Robusto
   const fetchData = async (currentSchoolId: string | null, userId?: string, force = false) => {
-    if (!currentSchoolId) return;
+    // SÊNIOR: Se não houver schoolId, mas for super_admin, ele pode ver dados globais (ou nada se for restrito)
+    // Para evitar "zeroed out", só prosseguimos se houver contexto ou se for admin.
+    if (!currentSchoolId && userRole !== 'super_admin') {
+      console.log("🕵️ Fetch abortado: Sem schoolId e não é Super Admin.");
+      return;
+    }
 
-    // SÊNIOR: Debounce de 1000ms (ajustado p/ evitar sobrecarga) - ignorado se for 'force'
+    // SÊNIOR: Debounce de 1000ms
     const now = Date.now();
     if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 1000)) {
       console.log("⏳ Fetch debounced. Ignorando requisição duplicada.");
@@ -290,9 +300,17 @@ const App: React.FC = () => {
 
     const channel = supabase
       .channel('db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => fetchData(schoolId))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => fetchData(schoolId))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => fetchData(schoolId))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
+        console.log("🔔 Realtime: Students changed. Fetching in 500ms...");
+        setTimeout(() => fetchData(schoolId), 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+        console.log("🔔 Realtime: Payments changed. Fetching in 500ms...");
+        setTimeout(() => fetchData(schoolId), 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => {
+        setTimeout(() => fetchData(schoolId), 500);
+      })
       .subscribe();
 
     return () => {
@@ -310,19 +328,16 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     try {
       setIsLoading(true);
-      await supabase.auth.signOut();
+      // SÊNIOR: A limpeza é feita no onAuthStateChange(SIGNED_OUT) para ser verdadeiramente centralizada.
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
 
-      // Limpeza agressiva de cache e estado para evitar loops
-      localStorage.clear();
-      sessionStorage.clear();
-
-      // Força recarregamento da página para garantir estado limpo
-      window.location.href = '/';
-
+      // Opcional: Se ainda assim o loop ocorrer, usamos replace em vez de reload
+      // window.location.replace('/'); 
     } catch (error) {
       console.error("Erro ao sair:", error);
-      // Fallback se reload falhar (improvável)
-      window.location.reload();
+      setIsLoading(false);
+      showAlert("Erro", "Falha ao desconectar. Tente novamente.", "error");
     }
   };
 
