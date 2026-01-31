@@ -56,23 +56,18 @@ const App: React.FC = () => {
 
       // Casos de sucesso (Login ou F5)
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
-        // Se já carregamos via INIT, ignoramos o SIGNED_IN duplicado do boot
-        if (initialLoadComplete.current) {
-          console.log("⏭️ [AUTH] Evento ignorado (sistema já carregado).");
+        // Se já travamos ou já carregamos, ignoramos qualquer evento novo
+        if (fetchingProfileRef.current || initialLoadComplete.current) {
+          console.log("⏭️ [AUTH] Loop/Corrida detectada. Ignorando evento redundante.");
           return;
         }
+
         setIsAuthenticated(true);
         isAuthenticatedRef.current = true;
 
-        // SÊNIOR: Verificamos se o usuário é válido antes de buscar perfil
-        supabase.auth.getUser().then(({ data: { user } }) => {
-          if (user) {
-            handleUserProfile(user.id, user.email, true);
-          } else {
-            console.error("❌ [AUTH] Sessão inválida no getUser()");
-            setIsLoading(false);
-          }
-        });
+        // SÊNIOR: Usamos session.user diretamente para ECONOMIZAR uma chamada de rede (getUser)
+        // Isso evita o erro ERR_CONNECTION_CLOSED que ocorre em chamadas simultâneas.
+        handleUserProfile(session.user.id, session.user.email, true);
       }
 
       else if (event === 'SIGNED_OUT') {
