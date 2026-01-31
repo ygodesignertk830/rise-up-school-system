@@ -121,56 +121,85 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // fetchData PARALELIZADO e Robusto
+  // fetchData - SEMPRE DO BANCO, NUNCA DO CACHE
   const fetchData = async (currentSchoolId: string | null, userId?: string, force = false, overrideRole?: UserRole) => {
     const role = overrideRole || userRole;
 
+    console.log("\n═══════════════════════════════════════");
+    console.log("📡 [FETCH START]", {
+      currentSchoolId,
+      userId,
+      role,
+      force,
+      timestamp: new Date().toISOString()
+    });
+    console.log("═══════════════════════════════════════\n");
+
     // SÊNIOR: Se for Admin, ele pode querer ver tudo. Se for Escola, precisa de ID.
     if (!currentSchoolId && role !== 'super_admin') {
-      console.log("🕵️ Fetch abortado: Faltando contexto.");
+      console.error("❌ [FETCH] Abortado: Sem schoolId e usuário não é super_admin");
       return;
     }
 
     // SÊNIOR: Debounce mais curto (500ms) mas com lock de início
     const now = Date.now();
-    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 500)) return;
+    if (!force && lastFetchRef.current !== 0 && (now - lastFetchRef.current < 500)) {
+      console.warn("⏳ [FETCH] Debounced. Ignorando.");
+      return;
+    }
     lastFetchRef.current = now;
 
     try {
       const requestId = Math.random().toString(36).substring(7);
-      console.time(`⏱️ [${requestId}] Fetch`);
-      console.log(`📡 [${requestId}] Buscando dados do BANCO (não cache)...`, {
-        schoolId: currentSchoolId,
-        role: role,
-        force: force
-      });
+      console.time(`⏱️ [${requestId}] FETCH TOTAL`);
 
+      // QUERIES
       let studentsQuery = supabase.from('students').select('*').order('name', { ascending: true });
       let classesQuery = supabase.from('classes').select('*').order('name');
 
-      // Filtro de escola SE houver (Super Admin pode ver tudo se ID for null)
       if (currentSchoolId) {
+        console.log("🏫 [FETCH] Filtrando por school_id:", currentSchoolId);
         studentsQuery = studentsQuery.eq('school_id', currentSchoolId);
         classesQuery = classesQuery.eq('school_id', currentSchoolId);
+      } else {
+        console.log("🌍 [FETCH] Super Admin: carregando TODOS os dados (sem filtro de escola)");
       }
 
+      console.log("🔄 [FETCH] Iniciando queries paralelas...");
       const [classesRes, studentsRes] = await Promise.all([classesQuery, studentsQuery]);
 
+      // VALIDAÇÃO DE ERROS - CRÍTICO!
+      if (classesRes.error) {
+        console.error("❌ [FETCH] ERRO AO BUSCAR TURMAS:", classesRes.error);
+        console.error("Detalhes:", JSON.stringify(classesRes.error, null, 2));
+        throw new Error(`Erro ao carregar turmas: ${classesRes.error.message}`);
+      }
 
-      if (classesRes.error) throw classesRes.error;
-      if (studentsRes.error) throw studentsRes.error;
+      if (studentsRes.error) {
+        console.error("❌ [FETCH] ERRO AO BUSCAR ALUNOS:", studentsRes.error);
+        console.error("Detalhes:", JSON.stringify(studentsRes.error, null, 2));
+        throw new Error(`Erro ao carregar alunos: ${studentsRes.error.message}`);
+      }
 
-      // Atualiza Turmas
-      if (classesRes.data) setClasses(classesRes.data);
+      console.log("✅ [FETCH] Turmas recebidas:", classesRes.data?.length || 0);
+      console.log("✅ [FETCH] Alunos recebidos:", studentsRes.data?.length || 0);
 
-      // Atualiza Alunos e busca pagamentos
-      if (studentsRes.data) {
+      // ATUALIZA ESTADO - SÓ SE TIVER DADOS VÁLIDOS
+      if (classesRes.data !== null) {
+        console.log("💾 [STATE] Atualizando turmas...");
+        setClasses(classesRes.data);
+      }
+
+      if (studentsRes.data !== null) {
         const studentsData = studentsRes.data;
+        console.log("💾 [STATE] Atualizando alunos...");
         setStudents(studentsData);
 
+        // BUSCAR PAGAMENTOS
         if (studentsData.length > 0) {
           const studentIds = studentsData.map(s => s.id);
-          // Otimização: Slice para evitar limites de URI em IN clause se forem milhares (SaaS safety)
+          console.log("📄 [FETCH] Buscando pagamentos para", studentIds.length, "alunos...");
+
           const chunks = [];
           for (let i = 0; i < studentIds.length; i += 100) {
             chunks.push(studentIds.slice(i, i + 100));
@@ -181,18 +210,38 @@ const App: React.FC = () => {
           );
 
           const paymentsResponses = await Promise.all(paymentsPromises);
-          const allPayments = paymentsResponses.flatMap(res => res.data || []);
 
+          // Verifica erros nas queries de pagamentos
+          const paymentsErrors = paymentsResponses.filter(r => r.error);
+          if (paymentsErrors.length > 0) {
+            console.error("❌ [FETCH] ERROS ao buscar pagamentos:", paymentsErrors);
+          }
+
+          const allPayments = paymentsResponses.flatMap(res => res.data || []);
+          console.log("✅ [FETCH] Pagamentos recebidos:", allPayments.length);
           setPayments(allPayments);
         } else {
+          console.log("ℹ️ [FETCH] Nenhum aluno encontrado. Zerando pagamentos.");
           setPayments([]);
         }
       }
 
-      console.timeEnd(`⏱️ [${requestId}] Total Fetch`);
+      console.timeEnd(`⏱️ [${requestId}] FETCH TOTAL`);
+      console.log("✅ [FETCH] Concluído com sucesso!\n");
     } catch (error: any) {
-      console.error('❌ Erro Crítico ao buscar dados:', error);
-      showToast("Conexão instável. Usando dados locais.", "warning");
+      console.error("\n🔥🔥🔥 [FETCH] ERRO CRÍTICO 🔥🔥🔥");
+      console.error("Mensagem:", error.message);
+      console.error("Stack:", error.stack);
+      console.error("Objeto completo:", error);
+      console.error("🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n");
+
+      showAlert(
+        "Erro ao Carregar Dados",
+        `Não foi possível carregar os dados do banco de dados. Por favor, recarregue a página. Erro: ${error.message}`,
+        'error'
+      );
+
+      // NÃO ZERAMOS O ESTADO! Mantemos dados anteriores se houver.
     }
   };
 
@@ -206,7 +255,9 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log("📊 [PROFILE] Iniciando carregamento de perfil para userId:", userId);
+    console.log("\n👤 ═══════════════════════════════════════");
+    console.log("[PROFILE START] userId:", userId, "email:", userEmail);
+    console.log("═══════════════════════════════════════\n");
     fetchingProfileRef.current = true;
 
     if (showLoading) setIsLoading(true);
@@ -290,12 +341,9 @@ const App: React.FC = () => {
         }
 
         // B. Busca Dados Operacionais (COM ROLE EXPLÍCITA)
-        // CRITICAL: SEMPRE força refetch (force=true) para ignorar qualquer cache
-        console.log("📊 [PROFILE] Forçando refetch completo de dados operacionais...");
         await fetchData(resolvedSchoolId, userId, true, userData.role as UserRole);
       } else if (userData?.role === 'super_admin') {
         // Super Admin sem escola ainda sim carrega dados globais
-        console.log("👑 [PROFILE] Carregando dados globais para Super Admin...");
         await fetchData(null, userId, true, 'super_admin');
       }
 
