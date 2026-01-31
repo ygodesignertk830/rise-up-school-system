@@ -404,7 +404,7 @@ const App: React.FC = () => {
         photo_url: studentData.photo_url,
         phone: studentData.phone,
         guardian_name: studentData.guardian_name,
-        birth_date: studentData.birth_date
+        birth_date: studentData.birth_date || null
       }]).select().single();
 
       if (studentError) {
@@ -453,7 +453,7 @@ const App: React.FC = () => {
         photo_url: updatedStudent.photo_url,
         phone: updatedStudent.phone,
         guardian_name: updatedStudent.guardian_name,
-        birth_date: updatedStudent.birth_date
+        birth_date: updatedStudent.birth_date || null
       }).eq('id', updatedStudent.id);
 
       if (error) {

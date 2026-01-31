@@ -161,6 +161,12 @@ const StudentList: React.FC<StudentListProps> = ({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
+        // VALIDAÇÃO SÊNIOR: Data de nascimento é obrigatória para evitar erro de banco (syntax date "")
+        if (!formData.birth_date) {
+            showAlert("Erro", "A data de nascimento é obrigatória para o cadastro do aluno.", "error");
+            return;
+        }
+
         const studentData: Student = {
             // Preserva dados originais se for edição (importante para school_id)
             ...selectedStudent,
