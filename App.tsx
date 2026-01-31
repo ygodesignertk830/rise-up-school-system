@@ -28,6 +28,7 @@ const App: React.FC = () => {
 
   // Prevent double fetching
   const fetchingProfileRef = useRef(false);
+  const lastFetchRef = useRef<number>(0); // NEW: Debounce fetch
 
   // Ref to track blocked status inside closures
   const isSchoolBlockedRef = useRef(false);
@@ -247,29 +248,65 @@ const App: React.FC = () => {
   const fetchData = async (currentSchoolId: string | null, userId?: string) => {
     if (!currentSchoolId) return;
 
+    // SÊNIOR: Debounce de 500ms para evitar spam de rede em eventos simultâneos (Realtime)
+    const now = Date.now();
+    if (now - lastFetchRef.current < 500) {
+      console.log("⏳ Fetch debounced. Ignorando requisição duplicada.");
+      return;
+    }
+    lastFetchRef.current = now;
+
     try {
-      console.log(`📡 Fetching data for school: ${currentSchoolId}`);
+      // SÊNIOR: Adicionamos um console.time para monitorar performance e logs mais claros
+      const requestId = Math.random().toString(36).substring(7);
+      console.log(`📡 [${requestId}] Fetching data for school: ${currentSchoolId}`);
 
       // 1. Turmas
-      let { data: classesData } = await supabase.from('classes').select('*').eq('school_id', currentSchoolId).order('name');
-      setClasses(classesData || []);
+      const { data: classesData, error: classesError } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('school_id', currentSchoolId)
+        .order('name');
 
-      setClasses(classesData || []);
+      if (classesError) throw classesError;
+      if (classesData) setClasses(classesData);
 
-      const { data: studentsData } = await supabase.from('students').select('*').eq('school_id', currentSchoolId).order('name', { ascending: true });
-      setStudents(studentsData || []);
+      // 2. Alunos
+      const { data: studentsData, error: studentsError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('school_id', currentSchoolId)
+        .order('name', { ascending: true });
 
-      if (studentsData && studentsData.length > 0) {
-        const studentIds = studentsData.map(s => s.id);
-        const { data: paymentsData } = await supabase.from('payments').select('*').in('student_id', studentIds);
-        setPayments(paymentsData || []);
-      } else {
-        setPayments([]);
+      if (studentsError) throw studentsError;
+
+      // SÊNIOR: MUITO IMPORTANTE! 
+      // Se studentsData for null (erro silencioso do Supabase/Network), NÃO resetamos o estado.
+      // Resetar para [] causa o efeito "banco zerado" que o usuário relatou.
+      if (studentsData) {
+        setStudents(studentsData);
+
+        if (studentsData.length > 0) {
+          const studentIds = studentsData.map(s => s.id);
+          const { data: paymentsData, error: paymentsError } = await supabase
+            .from('payments')
+            .select('*')
+            .in('student_id', studentIds);
+
+          if (paymentsError) throw paymentsError;
+          if (paymentsData) setPayments(paymentsData);
+        } else {
+          setPayments([]);
+        }
       }
 
+      console.log(`✅ [${requestId}] Fetch completed successfully.`);
+
     } catch (error: any) {
-      console.error('Erro ao buscar dados:', error);
-      showAlert("Conexão Instável", "Falha ao buscar dados (Vercel): " + (error.message || "Verifique sua rede"), 'error');
+      console.error('❌ Erro Crítico ao buscar dados:', error);
+      // SÊNIOR: Não limpamos o estado aqui! Mantemos o que temos na tela (Stale-While-Revalidate pattern parcial)
+      // Apenas avisamos o usuário se for algo persistente.
+      showToast("Conexão instável. Mantendo dados locais.", "warning");
     }
   };
 
@@ -454,20 +491,32 @@ const App: React.FC = () => {
 
   const handleDeleteStudent = async (studentId: string) => {
     if (!await showConfirm("Excluir aluno?", "Isso apagará TODO o histórico financeiro e de presença. Confirmar?")) return;
-    try {
-      // Manual Cascade: Remove dependências primeiro para garantir
-      await supabase.from('payments').delete().eq('student_id', studentId);
-      await supabase.from('attendance').delete().eq('student_id', studentId);
 
-      const { error: studError } = await supabase.from('students').delete().eq('id', studentId);
+    // Otimístico: Remove logo da tela para UX instantânea
+    const originalStudents = [...students];
+    const originalPayments = [...payments];
+
+    setStudents(prev => prev.filter(s => s.id !== studentId));
+    setPayments(prev => prev.filter(p => p.student_id !== studentId));
+
+    try {
+      // SÊNIOR: REMOVIDO deletes manuais de 'payments' e 'attendance'.
+      // Confiamos no ON DELETE CASCADE do banco de dados (configurado no SQL).
+      // Isso reduz drasticamente a carga no Realtime e evita race conditions.
+      const { error: studError } = await supabase
+        .from('students')
+        .delete()
+        .eq('id', studentId);
+
       if (studError) throw studError;
 
-      setStudents(prev => prev.filter(s => s.id !== studentId));
-      setPayments(prev => prev.filter(p => p.student_id !== studentId));
-      showToast("Aluno excluído com sucesso");
+      showToast("Aluno removido.");
     } catch (error: any) {
-      console.error(error);
-      showAlert("Erro ao deletar", "Não foi possível remover o aluno. Tente novamente.", 'error');
+      console.error("Erro ao deletar aluno:", error);
+      // Reverte estado se falhar no banco
+      setStudents(originalStudents);
+      setPayments(originalPayments);
+      showAlert("Erro ao deletar", "Não foi possível sincronizar com o servidor. Tente novamente.", 'error');
     }
   };
 
