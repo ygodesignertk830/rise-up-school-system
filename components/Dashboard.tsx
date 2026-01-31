@@ -376,7 +376,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <img src={officialLogo} alt="Logo" className="w-8 h-8 object-contain" />
             </div>
             <div>
-              <h1 className="font-black text-lg text-white tracking-tighter">RISE UP V2</h1>
+              <h1 className="font-black text-lg text-white tracking-tighter">RISE UP</h1>
               <p className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.2em]">English School</p>
             </div>
           </div>
