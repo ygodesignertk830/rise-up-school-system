@@ -59,6 +59,36 @@ const WhatsAppIntegration: React.FC = () => {
         }
     };
 
+    const handleSimulateBilling = async () => {
+        const { showConfirm, showToast } = await import('../utils/alerts');
+        const confirmed = await showConfirm(
+            'Simular Cobrança agora?',
+            'O robô irá processar todos os pagamentos e enviar mensagens para os clientes AGORA. Deseja continuar?'
+        );
+
+        if (!confirmed) return;
+
+        setIsActionLoading(true);
+        try {
+            const { error } = await supabase
+                .from('whatsapp_config')
+                .update({
+                    command: 'simulate_billing',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', 'global');
+
+            if (error) throw error;
+            showToast('Comando de simulação enviado! Verifique o WhatsApp.', 'success');
+        } catch (err: any) {
+            console.error('Erro ao simular cobrança:', err);
+            const { showAlert } = await import('../utils/alerts');
+            showAlert('Erro', 'Não foi possível disparar a simulação.', 'error');
+        } finally {
+            setIsActionLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchStatus();
         // Inscrição em tempo real para atualizações do QR Code/Status
@@ -129,14 +159,25 @@ const WhatsAppIntegration: React.FC = () => {
                     </p>
 
                     {status === 'connected' && (
-                        <button
-                            onClick={handleLogout}
-                            disabled={isActionLoading}
-                            className="mt-8 flex items-center gap-2 px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl font-bold transition-all disabled:opacity-50"
-                        >
-                            {isActionLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
-                            {isActionLoading ? 'Desconectando...' : 'Desconectar WhatsApp'}
-                        </button>
+                        <div className="flex flex-col w-full gap-3 mt-8">
+                            <button
+                                onClick={handleSimulateBilling}
+                                disabled={isActionLoading}
+                                className="flex items-center justify-center gap-2 px-6 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black transition-all shadow-[0_10px_20px_rgba(16,185,129,0.2)] disabled:opacity-50"
+                            >
+                                {isActionLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
+                                {isActionLoading ? 'Processando...' : 'Simular Cobrança de Teste'}
+                            </button>
+
+                            <button
+                                onClick={handleLogout}
+                                disabled={isActionLoading}
+                                className="flex items-center justify-center gap-2 px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl font-bold transition-all disabled:opacity-50"
+                            >
+                                {isActionLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
+                                {isActionLoading ? 'Saindo...' : 'Desconectar WhatsApp'}
+                            </button>
+                        </div>
                     )}
                 </motion.div>
 

@@ -78,6 +78,17 @@ async function connectToWhatsApp() {
                     console.error('⚠️ [WHATSAPP] Erro ao deslogar:', e.message);
                 }
                 process.exit(0);
+            } else if (command === 'simulate_billing') {
+                console.log('🧪 [WHATSAPP] Comando de simulação recebido. Iniciando disparo...');
+                try {
+                    await runBillingRoutine(sock);
+                    console.log('✅ [WHATSAPP] Simulação concluída.');
+                } catch (e) {
+                    console.error('⚠️ [WHATSAPP] Erro na simulação:', e.message);
+                } finally {
+                    // Limpa o comando para permitir novas simulações
+                    await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
+                }
             }
         })
         .subscribe();
