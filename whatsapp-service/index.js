@@ -64,9 +64,11 @@ async function connectToWhatsApp() {
         .on('postgres_changes', {
             event: 'UPDATE',
             schema: 'public',
-            table: 'whatsapp_config',
-            filter: "id=eq.global"
+            table: 'whatsapp_config'
         }, async (payload) => {
+            // Verifica se a mudança foi no registro 'global'
+            if (payload.new.id !== 'global') return;
+
             const { command } = payload.new;
             if (command === 'logout') {
                 console.log('🔌 [WHATSAPP] Comando de logout recebido remotamente. Desconectando...');
@@ -79,10 +81,10 @@ async function connectToWhatsApp() {
                 }
                 process.exit(0);
             } else if (command === 'simulate_billing') {
-                console.log('🧪 [WHATSAPP] Comando de simulação recebido. Iniciando disparo...');
+                console.log('🧪 [WHATSAPP] Comando de simulação recebido via Realtime. Iniciando disparo...');
                 try {
                     await runBillingRoutine(sock);
-                    console.log('✅ [WHATSAPP] Simulação concluída.');
+                    console.log('✅ [WHATSAPP] Simulação concluída com sucesso.');
                 } catch (e) {
                     console.error('⚠️ [WHATSAPP] Erro na simulação:', e.message);
                 } finally {
@@ -91,9 +93,15 @@ async function connectToWhatsApp() {
                 }
             }
         })
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('📡 [SUPABASE] Escuta de comandos remotos ATIVADA com sucesso.');
+            } else {
+                console.log(`⚠️ [SUPABASE] Status da escuta Realtime: ${status}`);
+            }
+        });
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
@@ -110,8 +118,33 @@ async function connectToWhatsApp() {
         } else if (connection === 'open') {
             console.log('✅ [WHATSAPP] Conexão estabelecida com sucesso!');
             updateWhatsAppStatus('connected');
+            // Verifica se há comandos pendentes que foram perdidos durante o restart
+            await checkPendingCommands(sock);
         }
     });
+
+    /**
+     * Verifica se há comandos pendentes no banco de dados (ex: simulação disparada enquanto o bot estava offline)
+     */
+    async function checkPendingCommands(sockInstance) {
+        try {
+            const { data, error } = await supabase
+                .from('whatsapp_config')
+                .select('command')
+                .eq('id', 'global')
+                .single();
+
+            if (error) return;
+
+            if (data?.command === 'simulate_billing') {
+                console.log('🧪 [WHATSAPP] Detectado comando de simulação pendente. Iniciando...');
+                await runBillingRoutine(sockInstance);
+                await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
+            }
+        } catch (e) {
+            console.error('⚠️ [WHATSAPP] Erro ao verificar comandos pendentes:', e.message);
+        }
+    }
 
     // Agendamento: Todos os dias às 11:00 (Horário do Acre)
     cron.schedule('0 11 * * *', async () => {
@@ -135,6 +168,11 @@ async function runBillingRoutine(sock) {
     try {
         const alerts = await getDuePayments();
         console.log(`📡 [BOT] Encontrados ${alerts.length} alertas para envio.`);
+
+        if (alerts.length === 0) {
+            console.log('ℹ️ [BOT] Nenhuma cobrança pendente para hoje (HOJE, 2 DIAS, 3 DIAS ou ATRASADO).');
+            return;
+        }
 
         for (const alert of alerts) {
             const { student, payment, type } = alert;
