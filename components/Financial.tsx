@@ -25,6 +25,40 @@ const Financial: React.FC<FinancialProps> = ({ payments: rawPayments, students, 
     }).sort((a, b) => (a.studentName || '').localeCompare(b.studentName || ''));
   }, [rawPayments, students, classes, interestRate]);
 
+  const monthlyHistory = useMemo(() => {
+    const history: Record<string, { month: number, year: number, total: number, count: number }> = {};
+
+    rawPayments.filter(p => p.status === 'paid' && p.paid_at).forEach(p => {
+      const date = new Date(p.paid_at!);
+      const month = date.getMonth();
+      const year = date.getFullYear();
+      const key = `${month}-${year}`;
+
+      const student = students.find(s => s.id === p.student_id);
+      const details = calculatePaymentDetails(p, interestRate, student?.name);
+      const amount = details.calculatedAmount || details.amount;
+
+      if (!history[key]) {
+        history[key] = { month, year, total: 0, count: 0 };
+      }
+      history[key].total += amount;
+      history[key].count += 1;
+    });
+
+    return Object.values(history).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return b.month - a.month;
+    });
+  }, [rawPayments, students, interestRate]);
+
+  const getMonthName = (monthIndex: number) => {
+    const months = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    return months[monthIndex];
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -37,6 +71,27 @@ const Financial: React.FC<FinancialProps> = ({ payments: rawPayments, students, 
           </p>
         </div>
       </div>
+
+      {monthlyHistory.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {monthlyHistory.map((item, idx) => (
+            <div key={idx} className="bg-slate-900/60 border border-slate-800 p-5 rounded-3xl group hover:border-emerald-500/50 transition-all">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-emerald-400 transition-colors">
+                  {getMonthName(item.month)} / {item.year}
+                </span>
+                <CheckCircle className="w-4 h-4 text-emerald-500/50" />
+              </div>
+              <h4 className="text-xl font-black text-white tracking-tighter">
+                {formatCurrency(item.total)}
+              </h4>
+              <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase">
+                {item.count} {item.count === 1 ? 'Mensalidade Paga' : 'Mensalidades Pagas'}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="bg-slate-900/40 backdrop-blur-md rounded-2xl shadow-xl border border-slate-700/50 overflow-hidden">
         {/* DESKTOP VIEW */}
