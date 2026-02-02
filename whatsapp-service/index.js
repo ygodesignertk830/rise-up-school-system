@@ -127,6 +127,7 @@ async function connectToWhatsApp() {
      * Verifica se há comandos pendentes no banco de dados (ex: simulação disparada enquanto o bot estava offline)
      */
     async function checkPendingCommands(sockInstance) {
+        console.log('🔍 [WHATSAPP] Verificando se existem comandos pendentes no banco...');
         try {
             const { data, error } = await supabase
                 .from('whatsapp_config')
@@ -134,15 +135,21 @@ async function connectToWhatsApp() {
                 .eq('id', 'global')
                 .single();
 
-            if (error) return;
+            if (error) {
+                console.error('⚠️ [SUPABASE] Erro ao buscar comandos pendentes:', error.message);
+                return;
+            }
+
+            console.log(`🤖 [WHATSAPP] Comando atual no banco: ${data?.command || 'nenhum'}`);
 
             if (data?.command === 'simulate_billing') {
                 console.log('🧪 [WHATSAPP] Detectado comando de simulação pendente. Iniciando...');
                 await runBillingRoutine(sockInstance);
+                console.log('🧹 [WHATSAPP] Limpando comando de simulação do banco...');
                 await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
             }
         } catch (e) {
-            console.error('⚠️ [WHATSAPP] Erro ao verificar comandos pendentes:', e.message);
+            console.error('⚠️ [WHATSAPP] Erro crítico ao verificar comandos:', e.message);
         }
     }
 
@@ -204,6 +211,7 @@ async function runBillingRoutine(sock) {
             if (message) {
                 console.log(`📤 [BOT] Enviando mensagem para ${student.name} | JID: ${jid}...`);
                 await sock.sendMessage(jid, { text: message });
+                console.log(`✅ [BOT] Mensagem enviada para ${student.name} (${jid})`);
                 // Delay de segurança para evitar ban (3 a 7 segundos)
                 await new Promise(r => setTimeout(r, Math.random() * 4000 + 3000));
             }

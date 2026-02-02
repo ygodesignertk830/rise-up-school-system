@@ -79,12 +79,30 @@ const WhatsAppIntegration: React.FC = () => {
                 .eq('id', 'global');
 
             if (error) throw error;
-            showToast('Comando de simulação enviado! Verifique o WhatsApp.', 'success');
+
+            showToast('Simulação iniciada! Aguardando o robô processar...', 'info');
+
+            // Aguarda o robô limpar o comando (timeout de 60s)
+            let attempts = 0;
+            const checkInterval = setInterval(async () => {
+                attempts++;
+                const { data } = await supabase.from('whatsapp_config').select('command').eq('id', 'global').single();
+
+                if (!data?.command || attempts > 20) {
+                    clearInterval(checkInterval);
+                    setIsActionLoading(false);
+                    if (!data?.command) {
+                        showToast('Simulação concluída com sucesso!', 'success');
+                    } else {
+                        showToast('O robô demorou para responder. Verifique os logs na AWS.', 'warning');
+                    }
+                }
+            }, 3000);
+
         } catch (err: any) {
             console.error('Erro ao simular cobrança:', err);
             const { showAlert } = await import('../utils/alerts');
             showAlert('Erro', 'Não foi possível disparar a simulação.', 'error');
-        } finally {
             setIsActionLoading(false);
         }
     };
