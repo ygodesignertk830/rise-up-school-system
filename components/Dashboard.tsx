@@ -14,6 +14,7 @@ import SqlDisplay from './SqlDisplay';
 import Teachers from './Teachers';
 import Attendance from './Attendance';
 import WhatsAppIntegration from './WhatsAppIntegration';
+import ClassDetailModal from './ClassDetailModal';
 import { Student, Payment, Class, School } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
@@ -64,6 +65,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Class Modal State
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const [isClassDetailModalOpen, setIsClassDetailModalOpen] = useState(false);
+  const [selectedClassForDetail, setSelectedClassForDetail] = useState<Class | null>(null);
+  const [initialStudentId, setInitialStudentId] = useState<string | null>(null);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [newClass, setNewClass] = useState({ name: '', teacher: '', schedule: '', room: '', color: 'bg-blue-600' });
 
@@ -319,6 +323,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     setIsClassModalOpen(false);
     setNewClass({ name: '', teacher: '', schedule: '', room: '', color: 'bg-blue-600' });
     setEditingClassId(null);
+  };
+
+  const openClassDetail = (cls: Class, studentId?: string) => {
+    setSelectedClassForDetail(cls);
+    setInitialStudentId(studentId || null);
+    setIsClassDetailModalOpen(true);
+  };
+
+  const closeClassDetail = () => {
+    setIsClassDetailModalOpen(false);
+    setSelectedClassForDetail(null);
+    setInitialStudentId(null);
   };
 
   React.useEffect(() => {
@@ -584,7 +600,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Turmas</h2>
                       <button onClick={openNewClassModal} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg flex items-center gap-2 transition-all"><Plus className="w-5 h-5" /> Nova Turma</button>
                     </div>
-                    <ClassList classes={classes} students={students} onEdit={openEditClassModal} onDelete={onDeleteClass} />
+                    <ClassList classes={classes} students={students} onEdit={openEditClassModal} onDelete={onDeleteClass} onOpenDetail={openClassDetail} />
                   </div>
                 </div>
               )}
@@ -608,6 +624,22 @@ const Dashboard: React.FC<DashboardProps> = ({
               )}
             </motion.div>
           </AnimatePresence>
+
+          {selectedClassForDetail && (
+            <ClassDetailModal
+              isOpen={isClassDetailModalOpen}
+              onClose={closeClassDetail}
+              cls={selectedClassForDetail}
+              students={students}
+              payments={payments}
+              interestRate={currentInterestRate}
+              initialStudentId={initialStudentId || undefined}
+              onAddStudent={onAddStudent}
+              onEditStudent={onEditStudent}
+              onDeleteStudent={onDeleteStudent}
+              onTogglePayment={onTogglePayment}
+            />
+          )}
         </main>
       </div>
 

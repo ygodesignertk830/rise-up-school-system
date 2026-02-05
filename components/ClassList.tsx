@@ -7,9 +7,10 @@ interface ClassListProps {
   students: Student[];
   onEdit: (cls: Class) => void;
   onDelete: (id: string) => void;
+  onOpenDetail: (cls: Class, studentId?: string) => void;
 }
 
-const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDelete }) => {
+const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDelete, onOpenDetail }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {classes.map((cls) => {
@@ -20,7 +21,11 @@ const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDele
         const bgColor = cls.color.includes('bg-') ? cls.color : 'bg-blue-600';
 
         return (
-          <div key={cls.id} className="bg-slate-800 rounded-xl shadow-lg border border-slate-700 overflow-hidden hover:border-purple-500 transition-all group relative">
+          <div
+            key={cls.id}
+            onClick={() => onOpenDetail(cls)}
+            className="bg-slate-800 rounded-xl shadow-lg border border-slate-700 overflow-hidden hover:border-purple-500 transition-all group relative cursor-pointer"
+          >
             <div className={`h-2 w-full ${bgColor}`}></div>
             <div className="p-6">
               <div className="flex justify-between items-start mb-4 gap-3">
@@ -28,6 +33,9 @@ const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDele
                   <h3 className="text-xl font-bold text-white leading-tight break-words pr-2">
                     {cls.name}
                   </h3>
+                  <div className="mt-2 text-xs text-slate-500 font-bold uppercase tracking-widest bg-slate-900/40 w-fit px-2 py-1 rounded">
+                    Clique para ver detalhes
+                  </div>
                   <div className="mt-2">
                     <span className={`px-2.5 py-1 text-xs font-bold rounded-full bg-slate-900/80 text-slate-300 border border-slate-700 inline-flex items-center`}>
                       <User className="w-3 h-3 mr-1.5 text-purple-400" />
@@ -36,7 +44,7 @@ const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDele
                   </div>
                 </div>
 
-                <div className="flex gap-1 flex-shrink-0 bg-slate-900/50 p-1 rounded-lg border border-slate-700/50">
+                <div className="flex gap-1 flex-shrink-0 bg-slate-900/50 p-1 rounded-lg border border-slate-700/50 relative z-10" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => onEdit(cls)}
                     className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-md transition-all active:scale-95"
@@ -54,6 +62,7 @@ const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDele
                   </button>
                 </div>
               </div>
+
 
               <div className="space-y-3 text-sm text-slate-400 mt-6">
                 <div className="flex items-center">
@@ -76,7 +85,14 @@ const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDele
                   {students
                     .filter(s => s.class_id === cls.id)
                     .map(s => (
-                      <span key={s.id} className="text-xs bg-slate-900/50 text-slate-300 px-2 py-1 rounded border border-slate-700">
+                      <span
+                        key={s.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenDetail(cls, s.id);
+                        }}
+                        className="text-xs bg-slate-900/50 text-slate-300 px-2 py-1 rounded border border-slate-700 hover:border-indigo-500 hover:text-indigo-400 transition-colors cursor-pointer"
+                      >
                         {s.name.split(' ')[0]}
                       </span>
                     ))}

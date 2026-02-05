@@ -59,47 +59,56 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 
     // Listener de Comandos Remotos (via Supabase Realtime)
+    console.log('📡 [SUPABASE] Iniciando conexão Realtime para a tabela whatsapp_config...');
     const channel = supabase
         .channel('whatsapp_commands')
         .on('postgres_changes', {
-            event: 'UPDATE',
+            event: '*',
             schema: 'public',
             table: 'whatsapp_config'
         }, async (payload) => {
-            // Verifica se a mudança foi no registro 'global'
-            if (payload.new.id !== 'global') return;
+            console.log('🔔 [REALTIME] Notificação recebida:', JSON.stringify(payload, null, 2));
 
-            const { command } = payload.new;
+            const record = payload.new || payload.old;
+            if (!record || record.id !== 'global') return;
+
+            const { command } = record;
             if (command === 'logout') {
                 console.log('🔌 [WHATSAPP] Comando de logout recebido remotamente. Desconectando...');
                 try {
                     await sock.logout();
-                    // Limpa o comando no banco para não entrar em loop
                     await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
                 } catch (e) {
                     console.error('⚠️ [WHATSAPP] Erro ao deslogar:', e.message);
                 }
                 process.exit(0);
             } else if (command === 'simulate_billing') {
-                console.log('🧪 [WHATSAPP] Comando de simulação recebido via Realtime. Iniciando disparo...');
+                console.log('🧪 [WHATSAPP] Comando de simulação recebido. Iniciando disparo...');
                 try {
                     await runBillingRoutine(sock);
                     console.log('✅ [WHATSAPP] Simulação concluída com sucesso.');
                 } catch (e) {
                     console.error('⚠️ [WHATSAPP] Erro na simulação:', e.message);
                 } finally {
-                    // Limpa o comando para permitir novas simulações
                     await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
                 }
+            } else if (command === 'ping') {
+                console.log('🏓 [WHATSAPP] Comando PING recebido. O robô está ouvindo!');
+                await supabase.from('whatsapp_config').update({ command: null }).eq('id', 'global');
             }
         })
         .subscribe((status) => {
+            console.log(`📡 [SUPABASE] Status da conexão Realtime: ${status}`);
             if (status === 'SUBSCRIBED') {
-                console.log('📡 [SUPABASE] Escuta de comandos remotos ATIVADA com sucesso.');
-            } else {
-                console.log(`⚠️ [SUPABASE] Status da escuta Realtime: ${status}`);
+                console.log('✅ [SUPABASE] O robô está pronto para receber comandos do painel.');
             }
         });
+
+    // Backup de Segurança: Verifica comandos pendentes a cada 30 segundos 
+    // caso a conexão Realtime falhe ou oscile.
+    setInterval(async () => {
+        await checkPendingCommands(sock);
+    }, 30000);
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
