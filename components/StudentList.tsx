@@ -1157,7 +1157,8 @@ const StudentList: React.FC<StudentListProps> = ({
                                                     <div>
                                                         <label className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider ml-1">Turma</label>
                                                         <select className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all backdrop-blur-sm" value={formData.class_id} onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}>
-                                                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                            <option value="" disabled className="bg-slate-900 text-white">Selecione a Turma...</option>
+                                                            {classes.map(c => <option key={c.id} value={c.id} className="bg-slate-900 text-white">{c.name}</option>)}
                                                         </select>
                                                     </div>
                                                     <div>

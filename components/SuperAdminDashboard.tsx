@@ -849,8 +849,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
                       value={newUserSchoolId}
                       onChange={e => setNewUserSchoolId(e.target.value)}
                     >
-                      <option value="">Selecione a Unidade...</option>
-                      {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      <option value="" className="bg-slate-900 text-white">Selecione a Unidade...</option>
+                      {schools.map(s => <option key={s.id} value={s.id} className="bg-slate-900 text-white">{s.name}</option>)}
                     </select>
                   </div>
 

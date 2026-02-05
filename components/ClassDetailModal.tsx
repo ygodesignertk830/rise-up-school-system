@@ -407,8 +407,8 @@ const ClassDetailModal: React.FC<ClassDetailModalProps> = ({
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Status Matrícula</label>
                                                     <select className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-amber-600" value={editStudentData.status} onChange={e => setEditStudentData({ ...editStudentData, status: e.target.value as 'active' | 'inactive' })}>
-                                                        <option value="active">Ativo</option>
-                                                        <option value="inactive">Inativo</option>
+                                                        <option value="active" className="bg-slate-900 text-white">Ativo</option>
+                                                        <option value="inactive" className="bg-slate-900 text-white">Inativo</option>
                                                     </select>
                                                 </div>
                                                 <div className="space-y-2">
