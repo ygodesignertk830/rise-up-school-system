@@ -209,9 +209,9 @@ const ClassDetailModal: React.FC<ClassDetailModalProps> = ({
                             <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar space-y-8">
                                 {/* Groups */}
                                 {[
-                                    { id: 'overdue', label: 'Em Atraso', list: groups.overdue, color: 'text-red-400', bg: 'bg-red-500/10' },
+                                    { id: 'overdue', label: 'Atrasado', list: groups.overdue, color: 'text-red-400', bg: 'bg-red-500/10' },
                                     { id: 'due_today', label: 'Vence Hoje', list: groups.due_today, color: 'text-orange-400', bg: 'bg-orange-500/10' },
-                                    { id: 'coming_up', label: 'Vencendo em Breve', list: groups.coming_up, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+                                    { id: 'coming_up', label: 'Vence em 3 dias', list: groups.coming_up, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
                                     { id: 'on_time', label: 'Em Dia', list: groups.on_time, color: 'text-emerald-400', bg: 'bg-emerald-500/10' }
                                 ].map(group => group.list.length > 0 && (
                                     <div key={group.id} className="space-y-3">

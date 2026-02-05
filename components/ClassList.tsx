@@ -93,7 +93,7 @@ const ClassList: React.FC<ClassListProps> = ({ classes, students, onEdit, onDele
                         }}
                         className="text-xs bg-slate-900/50 text-slate-300 px-2 py-1 rounded border border-slate-700 hover:border-indigo-500 hover:text-indigo-400 transition-colors cursor-pointer"
                       >
-                        {s.name.split(' ')[0]}
+                        {s.name.trim().split(' ')[0] || s.name}
                       </span>
                     ))}
                   {studentCount === 0 && <span className="text-xs text-slate-600 italic">Nenhum aluno matriculado</span>}
